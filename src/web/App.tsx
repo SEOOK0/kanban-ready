@@ -87,10 +87,14 @@ export function App() {
   );
 
   const handleQuickAdd = useCallback(
-    async (status: Status, title: string) => {
+    async (status: Status, title: string, body?: string) => {
       if (!title.trim()) return;
       try {
-        await createCard({ title: title.trim(), status });
+        await createCard({
+          title: title.trim(),
+          body: body && body.trim() ? body : undefined,
+          status,
+        });
         await refresh();
       } catch (err) {
         flashToast(`add failed: ${(err as Error).message}`);
@@ -139,19 +143,6 @@ export function App() {
     [flashToast],
   );
 
-  const handleMove = useCallback(
-    async (id: string, target: Status) => {
-      try {
-        const updated = await moveCard(id, target);
-        await refresh();
-        setActiveCard(updated);
-      } catch (err) {
-        flashToast(`move failed: ${(err as Error).message}`);
-      }
-    },
-    [refresh, flashToast],
-  );
-
   return (
     <div className="app">
       <div className="topbar">
@@ -168,8 +159,9 @@ export function App() {
               label={label}
               cards={grouped[status]}
               loading={loading}
-              onQuickAdd={(t) => handleQuickAdd(status, t)}
+              onQuickAdd={(t, b) => handleQuickAdd(status, t, b)}
               onCardClick={(c) => setActiveCard(c)}
+              onCopyPrompt={handleCopyPrompt}
             />
           ))}
         </div>
@@ -185,7 +177,6 @@ export function App() {
           }}
           onDelete={() => handleDelete(activeCard.id)}
           onCopyPrompt={() => handleCopyPrompt(activeCard.id)}
-          onMove={(target) => handleMove(activeCard.id, target)}
         />
       ) : null}
 
@@ -199,30 +190,47 @@ interface ColumnProps {
   label: string;
   cards: Card[];
   loading: boolean;
-  onQuickAdd: (title: string) => void;
+  onQuickAdd: (title: string, body?: string) => void;
   onCardClick: (card: Card) => void;
+  onCopyPrompt: (id: string) => void;
 }
 
-function Column({ status, label, cards, loading, onQuickAdd, onCardClick }: ColumnProps) {
+function Column({ status, label, cards, loading, onQuickAdd, onCardClick, onCopyPrompt }: ColumnProps) {
   const [adding, setAdding] = useState("");
   const compact = status === "done";
 
   return (
-    <div className="column">
+    <div className={`column ${status}`}>
       <div className={`column-header ${status}`}>
         <span className="label">{label}</span>
         <span className="count">{loading ? "…" : cards.length}</span>
       </div>
       {status === "draft" ? (
         <div className="quick-add">
-          <input
-            placeholder="아이디어 빠르게 등록 (Enter)"
+          <textarea
+            placeholder="아이디어 빠르게 등록 (Enter, 본문은 Shift+Enter)"
+            rows={1}
             value={adding}
-            onChange={(e) => setAdding(e.target.value)}
+            onChange={(e) => {
+              setAdding(e.target.value);
+              const ta = e.currentTarget;
+              ta.style.height = "auto";
+              ta.style.height = ta.scrollHeight + "px";
+            }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && adding.trim()) {
-                onQuickAdd(adding);
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                const text = adding;
+                if (!text.trim()) return;
+                const newlineAt = text.indexOf("\n");
+                const title =
+                  newlineAt === -1 ? text.trim() : text.slice(0, newlineAt).trim();
+                const body =
+                  newlineAt === -1 ? undefined : text.slice(newlineAt + 1);
+                if (!title) return;
+                onQuickAdd(title, body);
                 setAdding("");
+                e.currentTarget.style.height = "";
               }
             }}
           />
@@ -251,6 +259,33 @@ function Column({ status, label, cards, loading, onQuickAdd, onCardClick }: Colu
                     ) : (
                       <div className="preview">{firstLine(card.body, 60)}</div>
                     )}
+                    {status === "ready" ? (
+                      <button
+                        type="button"
+                        className="card-copy"
+                        aria-label="prompt 복사"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onCopyPrompt(card.id);
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      </button>
+                    ) : null}
                   </div>
                 )}
               </Draggable>
@@ -269,10 +304,9 @@ interface CardModalProps {
   onSave: (patch: { title?: string; body?: string }) => Promise<void>;
   onDelete: () => void;
   onCopyPrompt: () => void;
-  onMove: (target: Status) => void;
 }
 
-function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt, onMove }: CardModalProps) {
+function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt }: CardModalProps) {
   const [title, setTitle] = useState(card.title);
   const [body, setBody] = useState(card.body);
   const dirty = title !== card.title || body !== card.body;
@@ -293,10 +327,6 @@ function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt, onMove }: Ca
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [dirty, title, body, onSave, onClose]);
-
-  const moveTargets: Status[] = (["draft", "ready", "done"] as Status[]).filter(
-    (s) => s !== card.status,
-  );
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -320,20 +350,13 @@ function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt, onMove }: Ca
           </div>
           <div className="right">
             <span className="id">{card.id}</span>
-            {moveTargets.map((t) => (
-              <button key={t} onClick={() => onMove(t)}>
-                → {t}
-              </button>
-            ))}
-            <button onClick={onCopyPrompt}>Copy prompt</button>
-            <button
-              className="primary"
-              disabled={!dirty}
-              onClick={() => onSave({ title, body })}
-            >
+            <button onClick={onClose}>Close</button>
+            <button disabled={!dirty} onClick={() => onSave({ title, body })}>
               Save
             </button>
-            <button onClick={onClose}>Close</button>
+            <button className="primary" onClick={onCopyPrompt}>
+              Copy prompt
+            </button>
           </div>
         </div>
       </div>

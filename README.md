@@ -37,6 +37,8 @@ src/
     store.ts        D1-backed CRUD
     prompt.ts       buildPrompt(card) for Claude/Codex paste
   web/              React + Vite UI (drag-and-drop board)
+mcp/
+  server.ts         Local stdio MCP server (thin client over the remote API)
 migrations/
   0001_init.sql     cards table schema
 wrangler.toml       Workers + D1 + Assets + custom domain config
@@ -55,6 +57,45 @@ wrangler.toml       Workers + D1 + Assets + custom domain config
 | POST | `/api/cards/:id/move` | `{status}` |
 | DELETE | `/api/cards/:id` | – |
 | GET | `/api/cards/:id/prompt` | – (markdown) |
+
+## MCP server (Claude Code / Codex)
+
+Local stdio MCP server in `mcp/server.ts` lets Claude Code and Codex CLI call the board directly — pull a Ready card's prompt, mark it Done after finishing, capture new ideas as Draft cards.
+
+### Tools
+
+| Tool | Purpose |
+|---|---|
+| `list_cards` | List cards, optionally filtered by status |
+| `get_prompt` | Fetch the AI-ready prompt text for a card id |
+| `move_card` | Move a card to draft / ready / done |
+| `create_card` | Capture a new card (defaults to draft) |
+
+It hits the remote API (`https://kanban.example.com` by default; override with `KANBAN_API_URL` env var), so the IP gate / WAF rules above apply — your machine must be on an allowlisted IP.
+
+### Run locally
+
+```bash
+npm run mcp:dev    # tsx mcp/server.ts (stdio)
+```
+
+### Register with Claude Code
+
+```bash
+claude mcp add kanban-ready -- npx tsx /path/to/kanban-ready/mcp/server.ts
+```
+
+### Register with Codex CLI
+
+Add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.kanban-ready]
+command = "npx"
+args = ["tsx", "/path/to/kanban-ready/mcp/server.ts"]
+```
+
+After registering, ask the agent: *"보드의 ready 카드 하나 가져와서 작업하고 끝나면 done으로 옮겨줘."*
 
 ## Access control: WAF + Worker-level fallback
 
