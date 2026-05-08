@@ -1,0 +1,30 @@
+{
+  "name": "kanban-ready",
+  "version": "0.2.0",
+  "description": "Lightweight kanban for capturing draft ideas → ready specs → done. Cloudflare Workers + D1.",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev:web": "vite",
+    "dev:worker": "wrangler dev",
+    "deploy": "vite build && wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "typecheck": "tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.web.json --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "@hello-pangea/dnd": "^17.0.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "wrangler": "^4.0.0"
+  }
+}

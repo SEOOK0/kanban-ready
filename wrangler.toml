@@ -1,0 +1,23 @@
+name = "kanban-ready"
+main = "src/worker.ts"
+compatibility_date = "2025-05-01"
+workers_dev = false
+
+routes = [
+  { pattern = "kanban.example.com", custom_domain = true }
+]
+
+[assets]
+directory = "./dist/web"
+not_found_handling = "single-page-application"
+binding = "ASSETS"
+run_worker_first = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kanban-ready"
+database_id = "<your-d1-database-id>"
+migrations_dir = "migrations"
+
+[observability]
+enabled = true

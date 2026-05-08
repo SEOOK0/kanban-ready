@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+.playwright-cli/
+.wrangler/
+backup-*.sql
+before-click.yml
+
