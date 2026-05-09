@@ -7,6 +7,7 @@ import {
   getCard,
   listCards,
   moveCard,
+  SpecRequiredError,
   TransitionError,
   updateCard,
 } from "./core/store.js";
@@ -98,7 +99,7 @@ app.post("/api/cards/:id/move", async (c) => {
     const card = await moveCard(c.env.DB, id, body.status);
     return c.json({ card });
   } catch (err) {
-    if (err instanceof TransitionError) {
+    if (err instanceof TransitionError || err instanceof SpecRequiredError) {
       return c.json({ error: err.message }, 400);
     }
     return c.json({ error: (err as Error).message }, 404);
