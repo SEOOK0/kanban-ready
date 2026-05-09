@@ -1,5 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { type Status, isStatus } from "./paths.js";
+import { type Status, canTransition, isStatus } from "./paths.js";
 import { type Card, makeId } from "./card.js";
 
 interface Row {
@@ -123,6 +123,13 @@ export async function updateCard(
   return next;
 }
 
+export class TransitionError extends Error {
+  constructor(public from: Status, public to: Status) {
+    super(`Invalid transition: ${from} → ${to}`);
+    this.name = "TransitionError";
+  }
+}
+
 export async function moveCard(
   db: D1Database,
   id: string,
@@ -132,6 +139,9 @@ export async function moveCard(
   const current = await getCard(db, id);
   if (!current) throw new Error(`Card not found: ${id}`);
   if (current.status === target) return current;
+  if (!canTransition(current.status, target)) {
+    throw new TransitionError(current.status, target);
+  }
 
   const updated = new Date().toISOString();
   await db

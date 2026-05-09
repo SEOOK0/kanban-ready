@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -6,6 +9,7 @@ import type { Card } from "../src/core/card.js";
 import { STATUSES } from "../src/core/paths.js";
 
 const BASE_URL = (process.env.KANBAN_API_URL || "https://kanban.example.com").replace(/\/+$/, "");
+const WORKFLOWS_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "WORKFLOWS.md");
 
 async function apiRaw(path: string, init?: RequestInit): Promise<string> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -34,13 +38,26 @@ function summarizeCard(c: Card): string {
   return `- ${c.id} (${c.status}) ${c.title}${tags}${tail}`;
 }
 
-const server = new McpServer({ name: "kanban-ready", version: "0.1.0" });
+const server = new McpServer({ name: "kanban-ready", version: "0.2.0" });
+
+server.registerTool(
+  "get_workflows",
+  {
+    description:
+      "Read the kanban-ready workflow guide (WORKFLOWS.md). Call this FIRST in a session to learn the card lifecycle, transition rules, and standard MCP dispatch flow before using other tools.",
+    inputSchema: {},
+  },
+  async () => {
+    const text = readFileSync(WORKFLOWS_PATH, "utf-8");
+    return { content: [{ type: "text", text }] };
+  },
+);
 
 server.registerTool(
   "list_cards",
   {
     description:
-      "List kanban cards. Optionally filter by status (draft|ready|done). Most recently updated first.",
+      "List kanban cards. Optionally filter by status (draft|ready|done|deploy|discarded). Most recently updated first. For dispatch, filter by 'ready'.",
     inputSchema: {
       status: z.enum(STATUSES).optional().describe("Filter by status"),
     },
@@ -77,7 +94,7 @@ server.registerTool(
   "move_card",
   {
     description:
-      "Move a card to draft|ready|done. Use 'done' to mark a Ready card as completed after finishing the work.",
+      "Move a card to draft|ready|done|deploy|discarded. Forward path is one step at a time (draft→ready→done→deploy); skipping rejects with 'Invalid transition'. 'discarded' is reachable from any state and is terminal. See get_workflows for full rules.",
     inputSchema: {
       id: z.string().min(1).describe("Card id"),
       status: z.enum(STATUSES).describe("Target column"),

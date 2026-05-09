@@ -7,6 +7,7 @@ import {
   getCard,
   listCards,
   moveCard,
+  TransitionError,
   updateCard,
 } from "./core/store.js";
 import { buildPrompt } from "./core/prompt.js";
@@ -97,6 +98,9 @@ app.post("/api/cards/:id/move", async (c) => {
     const card = await moveCard(c.env.DB, id, body.status);
     return c.json({ card });
   } catch (err) {
+    if (err instanceof TransitionError) {
+      return c.json({ error: err.message }, 400);
+    }
     return c.json({ error: (err as Error).message }, 404);
   }
 });

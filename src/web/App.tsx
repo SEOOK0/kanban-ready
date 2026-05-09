@@ -3,6 +3,7 @@ import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-p
 import {
   type Card,
   type Status,
+  canTransition,
   createCard,
   deleteCard,
   getPrompt,
@@ -15,7 +16,13 @@ const COLUMNS: { status: Status; label: string }[] = [
   { status: "draft", label: "Draft" },
   { status: "ready", label: "Ready" },
   { status: "done", label: "Done" },
+  { status: "deploy", label: "Deploy" },
+  { status: "discarded", label: "Discarded" },
 ];
+
+function emptyGroups(): Record<Status, Card[]> {
+  return { draft: [], ready: [], done: [], deploy: [], discarded: [] };
+}
 
 function firstLine(body: string, max = 80): string {
   const line = body
@@ -30,6 +37,7 @@ export function App() {
   const [cards, setCards] = useState<Card[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCard, setActiveCard] = useState<Card | null>(null);
+  const [showRules, setShowRules] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
   const [root, setRoot] = useState<string>("");
@@ -60,7 +68,7 @@ export function App() {
   }, [refresh, flashToast]);
 
   const grouped = useMemo(() => {
-    const g: Record<Status, Card[]> = { draft: [], ready: [], done: [] };
+    const g = emptyGroups();
     for (const c of cards) g[c.status].push(c);
     return g;
   }, [cards]);
@@ -70,7 +78,12 @@ export function App() {
       const { source, destination, draggableId } = result;
       if (!destination) return;
       if (source.droppableId === destination.droppableId) return;
+      const from = source.droppableId as Status;
       const target = destination.droppableId as Status;
+      if (!canTransition(from, target)) {
+        flashToast(`이동 불가: ${from} → ${target}`);
+        return;
+      }
       const prev = cards;
       setCards((cs) =>
         cs.map((c) => (c.id === draggableId ? { ...c, status: target } : c)),
@@ -147,7 +160,18 @@ export function App() {
     <div className="app">
       <div className="topbar">
         <div className="brand">kanban-ready</div>
-        <div className="root">{root}</div>
+        <div className="topbar-right">
+          <div className="root">{root}</div>
+          <button
+            type="button"
+            className="rules-button"
+            onClick={() => setShowRules(true)}
+            aria-label="전이 규칙 보기"
+            title="전이 규칙"
+          >
+            Flow
+          </button>
+        </div>
       </div>
 
       <DragDropContext onDragEnd={onDragEnd}>
@@ -180,6 +204,8 @@ export function App() {
         />
       ) : null}
 
+      {showRules ? <RulesModal onClose={() => setShowRules(false)} /> : null}
+
       {toast ? <div className="toast">{toast}</div> : null}
     </div>
   );
@@ -197,7 +223,7 @@ interface ColumnProps {
 
 function Column({ status, label, cards, loading, onQuickAdd, onCardClick, onCopyPrompt }: ColumnProps) {
   const [adding, setAdding] = useState("");
-  const compact = status === "done";
+  const compact = status === "done" || status === "deploy" || status === "discarded";
 
   return (
     <div className={`column ${status}`}>
@@ -208,7 +234,7 @@ function Column({ status, label, cards, loading, onQuickAdd, onCardClick, onCopy
       {status === "draft" ? (
         <div className="quick-add">
           <textarea
-            placeholder="아이디어 빠르게 등록 (Enter, 본문은 Shift+Enter)"
+            placeholder="아이디어 빠르게 등록"
             rows={1}
             value={adding}
             onChange={(e) => {
@@ -358,6 +384,60 @@ function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt }: CardModalP
               Copy prompt
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface RulesModalProps {
+  onClose: () => void;
+}
+
+function RulesModal({ onClose }: RulesModalProps) {
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
+
+  const forward: Status[] = ["draft", "ready", "done", "deploy"];
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal rules-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <span className="rules-title">Transition rules</span>
+          <button onClick={onClose}>Close</button>
+        </div>
+        <div className="modal-body rules-body">
+          <div className="rules-flow">
+            <div className="rules-flow-row">
+              {forward.map((s, i) => (
+                <span key={s} className="rules-flow-cell">
+                  <span className={`rules-node ${s}`}>{s}</span>
+                  {i < forward.length - 1 ? (
+                    <span className="rules-arrow" aria-hidden="true">→</span>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+            <div className="rules-flow-row terminal">
+              <span className="rules-source">모든 상태</span>
+              <span className="rules-arrow" aria-hidden="true">→</span>
+              <span className="rules-node discarded">discarded</span>
+              <span className="rules-terminal-note">(종착, 복원 불가)</span>
+            </div>
+          </div>
+
+          <ul className="rules-notes">
+            <li>전진은 한 칸씩만. done/deploy 직행 불가.</li>
+            <li>모든 상태에서 discarded 가능 (draft 포함, 폐기 기록 남김).</li>
+            <li>역방향 이동 없음. 다시 작업하려면 새 카드 생성.</li>
+            <li>discarded는 종착지. 복원 불가, 카드 삭제는 별개 액션.</li>
+          </ul>
         </div>
       </div>
     </div>
