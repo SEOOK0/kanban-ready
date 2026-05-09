@@ -83,6 +83,94 @@ npx wrangler dev
 
 ---
 
+## 3. 스키마 마이그레이션 + 롤백 플랜
+
+`migrations/000N_*.sql`을 추가해 D1 스키마를 바꿀 때 따르는 절차. **DB와 worker 코드는 한 쌍**이라 둘을 동시에 맞춰야 함.
+
+### 표준 배포 순서 (이걸로 거의 다 끝남)
+
+```bash
+# 0) 코드 커밋 & main 머지부터. 더티 워크트리에서 deploy 금지 (소스 유실 위험)
+git add -p && git commit
+git -C <main-repo-root> merge --ff-only <branch>
+git -C <main-repo-root> push origin main
+
+# 1) 원격 스냅샷 (롤백용)
+npx wrangler d1 export DB --remote --output=backup-pre-000N.sql
+
+# 2) 로컬 검증 (data import 후 migrate)
+npx wrangler d1 execute DB --local --file=backup-pre-000N.sql   # 필요 시
+npm run db:migrate:local
+npm run dev:worker   # 카드 read/write/move 모두 확인
+
+# 3) 원격 적용 (DB → 코드 순서. 거꾸로 하면 새 worker가 없는 컬럼 조회해서 5xx)
+npm run db:migrate:remote
+npm run deploy
+
+# 4) 헬스체크
+curl https://kanban.example.com/api/health
+curl https://kanban.example.com/api/cards | jq '.cards | length'
+```
+
+### 위험 신호 vs 정상 신호
+
+| 상황 | 정상 / 비정상 |
+|---|---|
+| `db:migrate:remote`가 0건 적용 | 이미 적용됨, 정상 |
+| `db:migrate:remote` 후 `/api/cards` 가 5xx | 비정상 (롤백) |
+| 새 컬럼이 NULL/0으로만 채워짐 | 마이그레이션의 백필 SQL 누락 (재작성 필요) |
+
+### 롤백 절차 (배포 후 문제 발견 시)
+
+**증상별 대응**:
+
+**A. Worker 코드만 문제, DB는 멀쩡** → worker 롤백만:
+```bash
+npx wrangler rollback   # 직전 버전으로
+```
+
+**B. 마이그레이션이 데이터를 망가뜨렸음** → DB 복원 + worker 롤백:
+```bash
+# 1) worker 먼저 이전 버전으로 (새 DB 형태에 의존하면 안 되므로)
+npx wrangler rollback
+
+# 2) 현재 망가진 DB도 일단 export (포렌식용)
+npx wrangler d1 export DB --remote --output=broken-$(date +%Y%m%d-%H%M).sql
+
+# 3) 사용자 테이블 + 마이그레이션 기록 드롭
+npx wrangler d1 execute DB --remote --command \
+  "DROP TABLE IF EXISTS cards; DROP TABLE IF EXISTS d1_migrations;"
+
+# 4) 백업 파일로 복원 (CREATE TABLE + INSERT 다 포함)
+npx wrangler d1 execute DB --remote --file=backup-pre-000N.sql
+
+# 5) 검증
+curl https://kanban.example.com/api/cards | jq '.cards | length'
+```
+
+**C. main에 머지된 코드도 되돌려야 함** → revert 커밋:
+```bash
+git revert <bad-commit>
+git push origin main
+# 다음 deploy까지 main과 운영이 다시 동기화됨
+```
+
+### 마이그레이션 작성 시 체크리스트
+
+- [ ] **idempotent하게**: `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`
+- [ ] **NOT NULL 컬럼 추가 시 백필 SQL 포함**: `ROW_NUMBER()` 등으로 기존 행 채우기
+- [ ] **CHECK 제약 변경 시 테이블 재구축**: SQLite는 ALTER로 CHECK 못 바꿈 (0002, 0003 참고)
+- [ ] **로컬에서 main DB 사본으로 먼저 검증**: 운영 데이터 형태가 로컬과 다를 수 있음
+- [ ] **worker 코드와 같은 PR/커밋에 묶기**: DB와 코드 분리 배포 금지
+
+### 백업 파일 보관 정책
+
+- `backup-*.sql`은 `.gitignore`에 등록되어 있음 (커밋 금지)
+- 마이그레이션 직전 백업은 최소 1주일은 보관 (개인 외장 디스크 또는 별도 디렉토리)
+- 운영 안정 확인 후 폐기
+
+---
+
 ## 그 외 알아두면 좋은 것
 
 | 명령 | 용도 |
