@@ -239,6 +239,18 @@ textarea:focus {
   font-weight: 500;
   margin-bottom: 4px;
 }
+.card .title .card-number {
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.card.compact .title .card-number {
+  font-size: 10px;
+}
 .card .preview {
   color: var(--text-muted);
   font-size: 12px;
@@ -330,6 +342,13 @@ textarea:focus {
   flex: 1;
   font-size: 16px;
   font-weight: 500;
+}
+.modal-header .modal-number {
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  padding: 0 4px;
 }
 .modal-header .status-badge {
   font-size: 11px;

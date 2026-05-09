@@ -4,6 +4,7 @@ import { type Card, makeId } from "./card.js";
 
 interface Row {
   id: string;
+  number: number;
   title: string;
   status: string;
   body: string;
@@ -21,6 +22,7 @@ function rowToCard(row: Row): Card {
   const status: Status = isStatus(row.status) ? row.status : "draft";
   return {
     id: row.id,
+    number: row.number,
     title: row.title,
     status,
     body: row.body,
@@ -73,15 +75,19 @@ export async function createCard(db: D1Database, input: CreateInput): Promise<Ca
   }
 
   const tags = input.tags || [];
-  await db
+  const inserted = await db
     .prepare(
-      "INSERT INTO cards (id, title, status, body, tags, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO cards (id, number, title, status, body, tags, created, updated) " +
+        "VALUES (?, (SELECT COALESCE(MAX(number), 0) + 1 FROM cards), ?, ?, ?, ?, ?, ?) " +
+        "RETURNING number",
     )
     .bind(id, input.title, status, input.body || "", JSON.stringify(tags), iso, iso)
-    .run();
+    .first<{ number: number }>();
+  if (!inserted) throw new Error("createCard: insert returned no row");
 
   return {
     id,
+    number: inserted.number,
     title: input.title,
     status,
     body: input.body || "",

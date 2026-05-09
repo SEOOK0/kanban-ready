@@ -35,7 +35,7 @@ function summarizeCard(c: Card): string {
   const tags = c.tags.length ? ` [${c.tags.join(", ")}]` : "";
   const preview = c.body.split("\n").map((s) => s.trim()).find(Boolean) || "";
   const tail = preview ? ` — ${preview.length > 80 ? preview.slice(0, 79) + "…" : preview}` : "";
-  return `- ${c.id} (${c.status}) ${c.title}${tags}${tail}`;
+  return `- #${c.number} ${c.id} (${c.status}) ${c.title}${tags}${tail}`;
 }
 
 const server = new McpServer({ name: "kanban-ready", version: "0.2.0" });
@@ -106,7 +106,7 @@ server.registerTool(
       { method: "POST", body: JSON.stringify({ status }) },
     );
     return {
-      content: [{ type: "text", text: `moved → ${card.status}: ${card.id} ${card.title}` }],
+      content: [{ type: "text", text: `moved → ${card.status}: #${card.number} ${card.id} ${card.title}` }],
       structuredContent: { card },
     };
   },
@@ -134,7 +134,7 @@ server.registerTool(
       body: JSON.stringify(payload),
     });
     return {
-      content: [{ type: "text", text: `created (${card.status}): ${card.id} ${card.title}` }],
+      content: [{ type: "text", text: `created (${card.status}): #${card.number} ${card.id} ${card.title}` }],
       structuredContent: { card },
     };
   },

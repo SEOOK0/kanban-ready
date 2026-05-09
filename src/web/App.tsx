@@ -279,7 +279,10 @@ function Column({ status, label, cards, loading, onQuickAdd, onCardClick, onCopy
                     className={`card ${compact ? "compact" : ""} ${snap.isDragging ? "dragging" : ""}`}
                     onClick={() => onCardClick(card)}
                   >
-                    <div className="title">{card.title}</div>
+                    <div className="title">
+                      <span className="card-number">#{card.number}</span>
+                      {card.title}
+                    </div>
                     {!compact ? (
                       <div className="preview">{firstLine(card.body)}</div>
                     ) : (
@@ -358,6 +361,7 @@ function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt }: CardModalP
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-header">
+          <span className="modal-number">#{card.number}</span>
           <input
             className="title-input"
             value={title}

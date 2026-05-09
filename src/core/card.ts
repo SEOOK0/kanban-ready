@@ -2,6 +2,7 @@ import type { Status } from "./paths.js";
 
 export interface Card {
   id: string;
+  number: number;
   title: string;
   status: Status;
   body: string;

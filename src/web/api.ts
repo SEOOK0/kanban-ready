@@ -15,6 +15,7 @@ export function canTransition(from: Status, to: Status): boolean {
 
 export interface Card {
   id: string;
+  number: number;
   title: string;
   status: Status;
   body: string;
