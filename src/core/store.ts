@@ -136,6 +136,13 @@ export class TransitionError extends Error {
   }
 }
 
+export class SpecRequiredError extends Error {
+  constructor() {
+    super("Insufficient spec: draft → ready requires a non-empty body. Use update_card to add spec/task first.");
+    this.name = "SpecRequiredError";
+  }
+}
+
 export async function moveCard(
   db: D1Database,
   id: string,
@@ -147,6 +154,9 @@ export async function moveCard(
   if (current.status === target) return current;
   if (!canTransition(current.status, target)) {
     throw new TransitionError(current.status, target);
+  }
+  if (current.status === "draft" && target === "ready" && !current.body.trim()) {
+    throw new SpecRequiredError();
   }
 
   const updated = new Date().toISOString();

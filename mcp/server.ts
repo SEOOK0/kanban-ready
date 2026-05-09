@@ -76,6 +76,54 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_card",
+  {
+    description:
+      "Get a card's full content (title, status, tags, body) by id. Use this to read a draft before refining it.",
+    inputSchema: {
+      id: z.string().min(1).describe("Card id"),
+    },
+  },
+  async ({ id }) => {
+    const { card } = await apiJson<{ card: Card }>(`/api/cards/${encodeURIComponent(id)}`);
+    const tags = card.tags.length ? `\ntags: ${card.tags.join(", ")}` : "";
+    const text = `#${card.number} ${card.id} (${card.status}) ${card.title}${tags}\n\n${card.body}`;
+    return {
+      content: [{ type: "text", text }],
+      structuredContent: { card },
+    };
+  },
+);
+
+server.registerTool(
+  "update_card",
+  {
+    description:
+      "Update a card's title, body, or tags. Use this to refine a draft into a Ready-quality spec. Status changes go through move_card.",
+    inputSchema: {
+      id: z.string().min(1).describe("Card id"),
+      title: z.string().min(1).optional().describe("New title (id stays the same)"),
+      body: z.string().optional().describe("New body / spec"),
+      tags: z.array(z.string()).optional().describe("Replace tags (full list, not a delta)"),
+    },
+  },
+  async ({ id, title, body, tags }) => {
+    const payload: Record<string, unknown> = {};
+    if (title !== undefined) payload.title = title;
+    if (body !== undefined) payload.body = body;
+    if (tags !== undefined) payload.tags = tags;
+    const { card } = await apiJson<{ card: Card }>(
+      `/api/cards/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(payload) },
+    );
+    return {
+      content: [{ type: "text", text: `updated (${card.status}): #${card.number} ${card.id} ${card.title}` }],
+      structuredContent: { card },
+    };
+  },
+);
+
+server.registerTool(
   "get_prompt",
   {
     description:
@@ -94,7 +142,7 @@ server.registerTool(
   "move_card",
   {
     description:
-      "Move a card to draft|ready|done|deploy|discarded. Forward path is one step at a time (draft→ready→done→deploy); skipping rejects with 'Invalid transition'. 'discarded' is reachable from any state and is terminal. See get_workflows for full rules.",
+      "Move a card to draft|ready|done|deploy|discarded. Forward path is one step at a time (draft→ready→done→deploy); skipping rejects with 'Invalid transition'. draft→ready also requires a non-empty body (spec) — write spec/task via update_card first or the move is rejected with 'Insufficient spec'. 'discarded' is reachable from any state and is terminal. See get_workflows for full rules.",
     inputSchema: {
       id: z.string().min(1).describe("Card id"),
       status: z.enum(STATUSES).describe("Target column"),

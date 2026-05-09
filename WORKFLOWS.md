@@ -24,24 +24,55 @@ draft → ready → done → deploy
 
 전이 규칙:
 - 전진은 한 칸씩만. `draft → done` 같은 직행 불가.
+- `draft → ready`는 본문이 비어있으면 거부된다 (`Insufficient spec`). spec/task를 먼저 채워야 한다.
 - 모든 상태에서 `discarded` 가능 (draft 포함, 폐기 기록 남김).
 - 역방향 이동 없음. 다시 작업할 거면 새 카드 생성.
-
-전이 규칙을 위반하면 `move_card`가 `Invalid transition` 에러로 거부한다.
 
 ---
 
 ## 2. 표준 동선 (작업 dispatch)
 
-처리할 카드 한 장을 끝까지 가져가는 흐름.
+처리 흐름은 항상 **사용자의 명시적 지시에서 시작**한다. agent가 자동으로 다음 단계를 건너뛰지 않는다. 사용자가 "이 카드 작업해줘"라고 해야 spec/task 작성을 시작하고, "코드 작업해줘"라고 해야 코드를 건드린다.
 
-1. `list_cards(status: "ready")` → 처리 가능한 카드 목록 확인.
-2. 우선순위 하나 고른 뒤 `get_prompt(id)` → 카드의 prompt 텍스트 받음.
-3. 받은 prompt 기준으로 실제 작업 수행 (코드 작성, 변경 적용 등).
-4. 작업이 끝나면 `move_card(id, "done")`.
-5. 실제 production 반영까지 했다면 별도로 `move_card(id, "deploy")`.
+### 2.1 Step-by-step (draft에서 시작)
 
-`list_cards()`(status 없이)는 모든 상태를 반환한다. 보통 `ready`만 보면 충분.
+**Step 1. 카드 내용 확인**
+- 사용자가 카드를 지목하면 `get_card(id)`로 본문을 읽는다.
+- 본문이 비어있으면 사용자와 대화하여 무엇을 만들 것인지 구체화한다. agent가 추측으로 본문을 채우지 않는다.
+- 합의된 내용을 `update_card(id, body=...)`로 영속화한다.
+
+**Step 2. 작업 요청 → spec / task 작성**
+- 사용자가 "이 카드 작업해줘" 식으로 요청하면 본문에 다음 두 항목을 추가한다:
+  - **Spec**: 무엇을 만들 것인가 (목표, 제약, 완료 조건)
+  - **Task**: 어떻게 할 것인가 (단계별 체크리스트)
+- 본문 갱신은 `update_card`. 작성 후 사용자에게 보여 confirm을 받는다.
+
+**Step 3. Ready로 이동**
+- spec/task가 본문에 들어있고 사용자 confirm을 받았으면 `move_card(id, "ready")`.
+- 본문이 비어있으면 서버가 transition을 거부한다 (`Insufficient spec`). 그러면 Step 2부터 다시.
+
+**Step 4. 코드 작업 — 사용자의 별도 요청 후**
+- 사용자가 "코드 작업 진행해줘" 식으로 요청해야 시작한다. ready 진입만으로 자동 시작하지 않는다.
+- 호스트 도구 (Read/Write/Edit/Bash)로 카드 spec에 따라 변경을 적용한다. 검증 (테스트, typecheck 등)까지 통과시킨다.
+
+**Step 5. Done으로 이동**
+- 코드 변경 + 검증 완료 후 `move_card(id, "done")`.
+
+**Step 6. Deploy로 이동 (선택)**
+- 실제 production 반영 후 `move_card(id, "deploy")`. 보통 사람이 배포까지 한 뒤 별도로 옮긴다.
+
+### 2.2 한 호흡으로 끝까지
+
+사용자가 "이 카드 끝까지 가줘" 식으로 요청하면:
+
+- **draft인데 body 충분**: Step 2 (spec/task 보강) → 3 (ready) → 4 (코드) → 5 (done) 까지 한 흐름으로 진행 가능.
+- **ready인데 spec 충분**: Step 4 → 5 까지 한 흐름.
+
+단 한 칸씩 이동 규칙은 그대로. ready를 건너뛸 수는 없다. 중간에 사용자가 멈출 의도를 표현하면 즉시 멈춘다.
+
+### 2.3 ready 카드 둘러보기
+
+처리할 카드를 고르려고 둘러볼 때는 `list_cards(status: "ready")`로 후보 목록부터 본다. 본문 전체가 필요하면 `get_card`, AI에 그대로 던질 prompt 텍스트만 필요하면 `get_prompt`.
 
 ---
 
@@ -49,10 +80,10 @@ draft → ready → done → deploy
 
 대화 중 새 작업·아이디어가 떠오르면 `create_card`로 일단 던져둔다.
 
-- **즉시 처리 안 함**: `status: "draft"` (기본값). 사람이 나중에 구체화해서 ready로 옮긴다.
-- **이미 충분히 구체화됨**: `status: "ready"` 로 직행 가능. 단, 본문에 컨텍스트가 충분해야 한다 (다른 agent가 그 카드만 보고도 시작할 수 있을 정도).
+- **즉시 처리 안 함**: `status: "draft"` (기본값). 나중에 Step 1~3을 거쳐 ready로 옮긴다.
+- **이미 충분히 구체화됨**: title + body를 채워서 `status: "draft"`로 만든 뒤 사용자 지시로 ready 이동. body 없이 ready로 직행 시도하면 가드에 막힌다.
 
-draft에 던질 때는 title 한 줄로도 충분. ready로 만들 때는 body에 배경/제약/완료 조건을 적어둔다.
+draft에 던질 때는 title 한 줄로도 충분.
 
 ---
 
@@ -69,9 +100,14 @@ draft 정리는 `discarded`로 쌓지 말고 그냥 dashboard에서 사람이 ha
 
 ---
 
-## 5. ID convention
+## 5. ID and number
 
-`YYYY-MM-DD-slugified-title` 형식으로 자동 생성된다 (예: `2026-05-09-d1-백업-스케줄`). 같은 날 같은 제목이면 `-2`, `-3` suffix.
+각 카드에는 두 가지 식별자가 붙는다:
+
+- **`id`** — `YYYY-MM-DD-slugified-title` 형식으로 자동 생성 (예: `2026-05-09-d1-백업-스케줄`). 같은 날 같은 제목이면 `-2`, `-3` suffix. tool 호출에 쓰는 정식 키.
+- **`number`** — 카드 생성 순서대로 1부터 매겨지는 monotonic 번호 (`#1`, `#2`, ...). 짧아서 사람이 가리키기 좋다 ("3번 카드 작업해줘").
+
+`list_cards`/`get_card`/`move_card`/`create_card` 출력에 모두 `#N` 표기가 포함된다. 사용자가 "#3" 식으로 가리키면 `list_cards` 결과에서 매칭해 정식 `id`를 찾은 뒤 다른 tool에 넘긴다.
 
 ID는 사람이 읽을 수 있고 안정적이라 prompt나 커밋 메시지에 그대로 인용해도 된다.
 
