@@ -10,6 +10,9 @@ concurrency:
 
 jobs:
   deploy:
+    # Skip on forks. Forks that want auto-deploy should change this to their
+    # own `<owner>/<repo>` and register the secrets listed in README.
+    if: github.repository == 'devstefancho/kanban-ready'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -22,6 +25,18 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # Replace wrangler.toml placeholders with deploy-time secrets.
+      # Secrets are passed via env (not interpolated into the shell line)
+      # to avoid command-injection surface and keep them out of the
+      # rendered command in any potential trace output.
+      - name: Inject deploy config
+        env:
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+          PROD_DOMAIN: ${{ secrets.PROD_DOMAIN }}
+        run: |
+          sed -i "s|<your-d1-database-id>|${D1_DATABASE_ID}|g" wrangler.toml
+          sed -i "s|kanban\.example\.com|${PROD_DOMAIN}|g" wrangler.toml
 
       - run: npm run build
 

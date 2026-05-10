@@ -23,10 +23,45 @@ npm run dev:web
 
 ## Deploy
 
+`wrangler.toml` is committed with placeholders (`<your-d1-database-id>`, `kanban.example.com`). You fill them in either at the local file or via GitHub Actions secrets — pick one of the two paths below. Both assume you've followed the [SECURITY.md deploy checklist](./SECURITY.md#3-deploy-checklist-do-these-before-exposing-the-worker) first.
+
+### Option 1: local deploy (simplest, no CI required)
+
+Edit `wrangler.toml` and replace the placeholders with your own values:
+
+```toml
+routes = [
+  { pattern = "kanban.your-domain.com", custom_domain = true }
+]
+
+[[d1_databases]]
+database_id = "your-actual-d1-database-id"
+```
+
+Then:
+
 ```bash
 npm run db:migrate:remote      # one-time / when schema changes
 npm run deploy                 # builds web + wrangler deploy
 ```
+
+If you don't want your edited `wrangler.toml` to be tracked by git (recommended for forks), `git update-index --skip-worktree wrangler.toml` after editing.
+
+### Option 2: GitHub Actions auto-deploy on push to main
+
+`.github/workflows/deploy.yml` builds and deploys on every push to `main`. It runs only when `github.repository == 'devstefancho/kanban-ready'`, so forks don't accidentally trigger failed deploys. To enable it on your own fork:
+
+1. Edit `.github/workflows/deploy.yml` and change the `if:` line to your `<owner>/<repo>`.
+2. Register four secrets in **Settings → Secrets and variables → Actions**:
+   | Secret | Value |
+   |---|---|
+   | `CLOUDFLARE_API_TOKEN` | Cloudflare API token with `Workers Scripts:Edit` + `D1:Edit` for your account |
+   | `CLOUDFLARE_ACCOUNT_ID` | Found in Cloudflare dashboard → right sidebar |
+   | `D1_DATABASE_ID` | Output of `wrangler d1 list` for your DB |
+   | `PROD_DOMAIN` | The host you want bound (e.g. `kanban.your-domain.com`) |
+3. The workflow's "Inject deploy config" step rewrites `wrangler.toml` placeholders with these secrets at build time. Secrets are passed as env vars (not shell-interpolated) and the rewritten file lives only on the ephemeral runner.
+
+**Schema migrations are still manual** — even with CI deploy, run `npm run db:migrate:remote` from your machine when you add a migration. The CI does *not* run migrations, by design (a bad migration in CI would break prod with no review step).
 
 ## Project layout
 
