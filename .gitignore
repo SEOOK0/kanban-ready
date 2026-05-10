@@ -6,4 +6,6 @@ dist/
 .wrangler/
 backup-*.sql
 before-click.yml
+.env*
+.dev.vars
 

@@ -2,9 +2,11 @@
 
 Lightweight personal kanban (`draft → ready → done`) running on Cloudflare Workers + D1.
 
-- **Live URL**: https://kanban.example.com
+> **Before you deploy: read [SECURITY.md](./SECURITY.md).**
+> This project is designed for **a single operator**. Authentication is **IP-allowlist only** (no login, no API key, no per-user isolation). The Worker-level IP gate is **fail-open by default** — if you deploy without setting up either a Cloudflare WAF rule or the `ALLOWED_IPS` secret, every API endpoint (including `DELETE`) is open to the internet. SECURITY.md has the full threat model, known limitations, and a deploy checklist. **Do not skip it.**
+
 - **Stack**: Hono (Workers) + React + Vite + D1
-- **Domain**: `example.com` (Cloudflare-managed) → `kanban.example.com` via custom domain binding
+- **Domain**: bring your own (Cloudflare-managed zone) → custom domain binding
 - **workers.dev URL**: disabled (`workers_dev = false`)
 
 ## Local development
@@ -141,7 +143,9 @@ After registering, ask the agent: *"보드의 ready 카드 하나 가져와서 �
 
 ## Access control: WAF + Worker-level fallback
 
-Two layers; either alone is enough, but you can stack both for defense-in-depth.
+> See [SECURITY.md §3](./SECURITY.md#3-deploy-checklist-do-these-before-exposing-the-worker) for the full deploy checklist and verification steps. The setup below is *how* to configure the gate; SECURITY.md is *why* and *what to verify*.
+
+Two layers; either alone is enough, but you should stack both for defense-in-depth. Without at least one of them active, the API is open to the internet.
 
 ### Find your home IP
 
