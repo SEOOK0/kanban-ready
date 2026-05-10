@@ -37,7 +37,14 @@ npm run dev:web
 
 ### Option 1: local deploy (simplest, no CI required)
 
-Edit `wrangler.toml` with your own values:
+First-time setup (only once per fork):
+
+```bash
+npx wrangler login                       # authenticate with your Cloudflare account
+npx wrangler d1 create kanban-ready      # creates the D1 database, prints a database_id
+```
+
+Copy the printed `database_id` into `wrangler.toml`, and replace the route host with your own domain:
 
 ```toml
 routes = [
@@ -45,10 +52,12 @@ routes = [
 ]
 
 [[d1_databases]]
-database_id = "your-actual-d1-database-id"
+database_id = "paste-the-id-from-wrangler-d1-create"
 ```
 
-Then:
+> The custom domain must already be a zone in your Cloudflare account — `wrangler deploy` will fail if it isn't.
+
+Then deploy:
 
 ```bash
 npm run db:migrate:remote      # one-time / when schema changes

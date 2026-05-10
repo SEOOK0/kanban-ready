@@ -20,7 +20,7 @@
     "@cloudflare/workers-types": "^4.20250109.0",
     "@hello-pangea/dnd": "^17.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@types/node": "^25.6.2",
+    "@types/node": "^22.10.0",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",

@@ -2,7 +2,8 @@
   "mcpServers": {
     "kanban-ready": {
       "command": "npx",
-      "args": ["tsx", "mcp/server.ts"]
+      "args": ["tsx", "mcp/server.ts"],
+      "env": { "KANBAN_API_URL": "https://kanban.your-domain.com" }
     },
     "kanban-ready-local": {
       "command": "npx",

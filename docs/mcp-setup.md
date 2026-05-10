@@ -4,7 +4,7 @@ Local stdio MCP server in `mcp/server.ts` lets Claude Code and Codex CLI call th
 
 The agent-side workflow (transition rules, dispatch flow, tool sequencing) is defined in [agent-workflow.md](./agent-workflow.md), which the agent fetches via `get_workflows` at session start.
 
-> **Network**: the MCP server hits the remote API (`KANBAN_API_URL`, defaults to your deployed worker), so the IP gate / WAF rules apply — your machine must be on an allowlisted IP. See [SECURITY.md §4](../SECURITY.md#4-setting-up-the-ip-gate).
+> **Network**: the MCP server hits the API at `KANBAN_API_URL` (required — set it to your deployed worker URL or `http://localhost:8787` for local dev). The IP gate / WAF rules apply — your machine must be on an allowlisted IP. See [SECURITY.md §4](../SECURITY.md#4-setting-up-the-ip-gate).
 
 ---
 
@@ -37,10 +37,12 @@ The agent-side workflow (transition rules, dispatch flow, tool sequencing) is de
 ## Run locally
 
 ```bash
-npm run mcp:dev    # tsx mcp/server.ts (stdio)
+KANBAN_API_URL=https://kanban.your-domain.com npm run mcp:dev    # against deployed worker
+# or
+KANBAN_API_URL=http://localhost:8787 npm run mcp:dev              # against `npm run dev:worker`
 ```
 
-By default the server hits `KANBAN_API_URL` (your deployed worker). To point at a local `wrangler dev` worker instead, set `KANBAN_API_URL=http://localhost:8787`.
+`KANBAN_API_URL` is required. The server validates it (must be a valid `https:` URL, or `http://localhost`) and refuses to start otherwise — this prevents accidentally pointing at a typo'd or attacker-controlled host.
 
 ---
 
@@ -49,23 +51,10 @@ By default the server hits `KANBAN_API_URL` (your deployed worker). To point at 
 CLI (user scope, absolute path — works from any directory):
 
 ```bash
-claude mcp add kanban-ready -- npx tsx /path/to/kanban-ready/mcp/server.ts
+claude mcp add kanban-ready --env KANBAN_API_URL=https://kanban.your-domain.com -- npx tsx /path/to/kanban-ready/mcp/server.ts
 ```
 
-Or commit a `.mcp.json` at the repo root (project scope, auto-loaded when Claude Code runs from this directory):
-
-```json
-{
-  "mcpServers": {
-    "kanban-ready": {
-      "command": "npx",
-      "args": ["tsx", "mcp/server.ts"]
-    }
-  }
-}
-```
-
-To point at a local worker instead of the deployed one, add an `env` block:
+Or commit a `.mcp.json` at the repo root (project scope, auto-loaded when Claude Code runs from this directory). The `env` block is **required** — replace the placeholder host with your own deployed worker:
 
 ```json
 {
@@ -73,11 +62,13 @@ To point at a local worker instead of the deployed one, add an `env` block:
     "kanban-ready": {
       "command": "npx",
       "args": ["tsx", "mcp/server.ts"],
-      "env": { "KANBAN_API_URL": "http://localhost:8787" }
+      "env": { "KANBAN_API_URL": "https://kanban.your-domain.com" }
     }
   }
 }
 ```
+
+For a local worker (`npm run dev:worker`), use `http://localhost:8787` instead.
 
 ---
 
@@ -89,6 +80,7 @@ Add to `~/.codex/config.toml`:
 [mcp_servers.kanban-ready]
 command = "npx"
 args = ["tsx", "/path/to/kanban-ready/mcp/server.ts"]
+env = { KANBAN_API_URL = "https://kanban.your-domain.com" }
 ```
 
 After registering, ask the agent: *"보드의 ready 카드 하나 가져와서 작업하고 끝나면 done으로 옮겨줘."*

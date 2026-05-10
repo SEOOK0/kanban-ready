@@ -103,13 +103,20 @@ export interface UpdateInput {
   tags?: string[];
 }
 
+export class NotFoundError extends Error {
+  constructor(id: string) {
+    super(`Card not found: ${id}`);
+    this.name = "NotFoundError";
+  }
+}
+
 export async function updateCard(
   db: D1Database,
   id: string,
   patch: UpdateInput,
 ): Promise<Card> {
   const current = await getCard(db, id);
-  if (!current) throw new Error(`Card not found: ${id}`);
+  if (!current) throw new NotFoundError(id);
 
   const next: Card = {
     ...current,
@@ -150,7 +157,7 @@ export async function moveCard(
 ): Promise<Card> {
   if (!isStatus(target)) throw new Error(`Invalid status: ${target}`);
   const current = await getCard(db, id);
-  if (!current) throw new Error(`Card not found: ${id}`);
+  if (!current) throw new NotFoundError(id);
   if (current.status === target) return current;
   if (!canTransition(current.status, target)) {
     throw new TransitionError(current.status, target);
@@ -175,6 +182,6 @@ export async function deleteCard(db: D1Database, id: string): Promise<void> {
     .run();
   const meta = result.meta as { changes?: number } | undefined;
   if (!meta || meta.changes === 0) {
-    throw new Error(`Card not found: ${id}`);
+    throw new NotFoundError(id);
   }
 }

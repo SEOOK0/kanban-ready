@@ -7,6 +7,7 @@ import {
   getCard,
   listCards,
   moveCard,
+  NotFoundError,
   SpecRequiredError,
   TransitionError,
   updateCard,
@@ -85,7 +86,8 @@ app.patch("/api/cards/:id", async (c) => {
     const card = await updateCard(c.env.DB, id, body);
     return c.json({ card });
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 404);
+    if (err instanceof NotFoundError) return c.json({ error: err.message }, 404);
+    throw err;
   }
 });
 
@@ -102,7 +104,8 @@ app.post("/api/cards/:id/move", async (c) => {
     if (err instanceof TransitionError || err instanceof SpecRequiredError) {
       return c.json({ error: err.message }, 400);
     }
-    return c.json({ error: (err as Error).message }, 404);
+    if (err instanceof NotFoundError) return c.json({ error: err.message }, 404);
+    throw err;
   }
 });
 
@@ -111,7 +114,8 @@ app.delete("/api/cards/:id", async (c) => {
     await deleteCard(c.env.DB, c.req.param("id"));
     return c.json({ ok: true });
   } catch (err) {
-    return c.json({ error: (err as Error).message }, 404);
+    if (err instanceof NotFoundError) return c.json({ error: err.message }, 404);
+    throw err;
   }
 });
 

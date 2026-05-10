@@ -8,7 +8,30 @@ import { z } from "zod";
 import type { Card } from "../src/core/card.js";
 import { STATUSES } from "../src/core/paths.js";
 
-const BASE_URL = (process.env.KANBAN_API_URL || "https://kanban.example.com").replace(/\/+$/, "");
+function resolveBaseUrl(): string {
+  const raw = process.env.KANBAN_API_URL;
+  if (!raw) {
+    throw new Error(
+      "KANBAN_API_URL is not set. Point it at your deployed worker (e.g. https://kanban.your-domain.com) " +
+        "or http://localhost:8787 for a local wrangler dev session.",
+    );
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(`KANBAN_API_URL is not a valid URL: ${raw}`);
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error(`KANBAN_API_URL must use http(s): ${raw}`);
+  }
+  if (parsed.protocol === "http:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
+    throw new Error(`KANBAN_API_URL must use https except for localhost: ${raw}`);
+  }
+  return raw.replace(/\/+$/, "");
+}
+
+const BASE_URL = resolveBaseUrl();
 const WORKFLOWS_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "agent-workflow.md");
 
 async function apiRaw(path: string, init?: RequestInit): Promise<string> {
@@ -63,7 +86,7 @@ server.registerTool(
     },
   },
   async ({ status }) => {
-    const qs = status ? `?status=${status}` : "";
+    const qs = status ? `?${new URLSearchParams({ status }).toString()}` : "";
     const { cards } = await apiJson<{ cards: Card[] }>(`/api/cards${qs}`);
     const lines = cards.length
       ? cards.map(summarizeCard).join("\n")

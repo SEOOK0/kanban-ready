@@ -37,12 +37,24 @@ Implications:
 `src/worker.ts` has this:
 
 ```ts
-if (!raw) return next();   // ALLOWED_IPS empty/unset → request passes
+if (!raw) return next();                      // ALLOWED_IPS unset → pass
+const allowed = raw.split(",").map(s => s.trim()).filter(Boolean);
+if (allowed.length === 0) return next();      // value trims to nothing → pass
 ```
 
-If you deploy without setting the `ALLOWED_IPS` secret **and** without a Cloudflare WAF rule, **every API endpoint is open to the internet**, including `DELETE /api/cards/:id`.
+If you deploy without setting the `ALLOWED_IPS` secret **and** without a Cloudflare WAF rule, **every API endpoint is open to the internet**, including `DELETE /api/cards/:id`. The same fail-open path triggers if `ALLOWED_IPS` is set but contains only commas/whitespace (e.g. you tried to "blank it out" instead of running `wrangler secret delete`).
 
 This is a deliberate trade-off (the operator can temporarily disable the gate without redeploying), but it means **first-time deploys are dangerous**. See the deploy checklist in §3.
+
+### 2.2.1 IP-gate trust depends on Cloudflare being the only ingress
+
+The Worker reads the source IP from the `cf-connecting-ip` request header (`worker.ts:29`). Cloudflare overwrites that header on every request that goes through its proxy, so it can't be forged from the public internet. **However, that guarantee only holds while every incoming request reaches the Worker via a Cloudflare-proxied custom domain.** If you ever:
+
+- re-enable `workers_dev` in `wrangler.toml` (currently `false` — keep it that way),
+- expose the Worker behind a non-Cloudflare frontend / proxy,
+- or call the Worker from a Cloudflare preview deployment without the same WAF rule,
+
+…then `cf-connecting-ip` is attacker-controllable and the IP gate becomes meaningless. If you add ingress paths in the future, also add a check that the request actually came through your zone (e.g. a shared `CF-Access-Client-Id` or a stricter WAF rule).
 
 ### 2.3 No per-endpoint authorization
 

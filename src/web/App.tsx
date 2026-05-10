@@ -40,7 +40,6 @@ export function App() {
   const [showRules, setShowRules] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
-  const [root, setRoot] = useState<string>("");
 
   const flashToast = useCallback((msg: string) => {
     setToast(msg);
@@ -57,8 +56,6 @@ export function App() {
     (async () => {
       try {
         await refresh();
-        const health = await fetch("/api/health").then((r) => r.json());
-        setRoot(health.root || "");
       } catch (err) {
         flashToast(`load failed: ${(err as Error).message}`);
       } finally {
@@ -161,7 +158,6 @@ export function App() {
       <div className="topbar">
         <div className="brand">kanban-ready</div>
         <div className="topbar-right">
-          <div className="root">{root}</div>
           <button
             type="button"
             className="rules-button"

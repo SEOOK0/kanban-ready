@@ -14,5 +14,5 @@
     "types": ["@cloudflare/workers-types"]
   },
   "include": ["src/worker.ts", "src/core/**/*.ts"],
-  "exclude": ["src/web/**/*", "src/cli.ts", "src/server/**/*"]
+  "exclude": ["src/web/**/*"]
 }

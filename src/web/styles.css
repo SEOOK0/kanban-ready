@@ -88,11 +88,6 @@ textarea:focus {
   align-items: center;
   gap: 12px;
 }
-.topbar .root {
-  color: var(--text-muted);
-  font-size: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
 .rules-button {
   font-size: 12px;
   padding: 4px 10px;
@@ -534,9 +529,6 @@ textarea:focus {
 
   .topbar {
     padding: 10px 14px;
-  }
-  .topbar .root {
-    display: none;
   }
 
   .board {
