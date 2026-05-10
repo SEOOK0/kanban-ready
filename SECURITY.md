@@ -15,7 +15,7 @@ This project is designed for **a single operator running their own instance for 
 | Card content is yours | Cards are stored as plaintext in D1. Don't put anything in them you wouldn't put in a notes app on your laptop. |
 | Trust boundary = IP allowlist | The only thing standing between the open internet and your full CRUD API is the IP allowlist (Cloudflare WAF and/or `ALLOWED_IPS` secret). |
 
-**If any of those assumptions don't hold for you, the default configuration is not safe.** See [§4 If you want multi-user](#4-if-you-want-multi-user).
+**If any of those assumptions don't hold for you, the default configuration is not safe.** See [§5 If you want multi-user](#5-if-you-want-multi-user).
 
 ---
 
@@ -73,19 +73,65 @@ Cards have `created`/`updated` timestamps but no history. Deletes are hard delet
 Before you `wrangler deploy` for the first time, all of these must be true:
 
 - [ ] **`workers_dev = false` in `wrangler.toml`** (already set in this repo). This closes the `<account>.workers.dev` backdoor that bypasses your custom-domain WAF rules.
-- [ ] **At least one of**:
-  - A Cloudflare WAF Custom Rule blocking everything except your IP(s) on the host (see [README §Access control](./README.md#access-control-waf--worker-level-fallback)), **or**
-  - `ALLOWED_IPS` Worker secret set with your IP(s): `npx wrangler secret put ALLOWED_IPS`.
-  - Setting **both** is recommended (defense in depth — one as the platform-level block, one as code-level fallback).
+- [ ] **At least one of the IP gates configured** — see [§4 Setting up the IP gate](#4-setting-up-the-ip-gate) for the actual setup steps:
+  - A Cloudflare WAF Custom Rule blocking everything except your IP(s) on the host, **or**
+  - `ALLOWED_IPS` Worker secret set with your IP(s).
+  - Setting **both** is recommended (defense in depth — platform-level block + code-level fallback).
 - [ ] **Verify the gate from outside**: after deploying, visit the URL from a network that is *not* on the allowlist (e.g. mobile data with wifi off). You should get Cloudflare 1020 (WAF block) or HTTP 403 (worker block). If you get a normal response, **the gate is not active — stop and fix it before continuing**.
 - [ ] **`/api/whoami`**: from your allowed network, hit `https://<your-domain>/api/whoami`. The returned IP should match what's in your allowlist. If it doesn't, your WAF rule will silently block you next.
 - [ ] **First deploy is a destructive write surface**: don't put real card content in until the above checks pass. A blank board is a cheap recovery point.
 
-If your IP rotates and you lock yourself out, see [RUNBOOK §1](./RUNBOOK.md#1-본인이-차단당했을-때-집-ip-변경).
+If your IP rotates and you lock yourself out later, see [docs/operations.md §1](./docs/operations.md#1-본인이-차단당했을-때-집-ip-변경) for recovery.
 
 ---
 
-## 4. If you want multi-user
+## 4. Setting up the IP gate
+
+Two layers; either alone is enough, but you should stack both for defense-in-depth. Without at least one of them active, the API is open to the internet.
+
+### 4.1 Find your IP
+
+```bash
+curl https://<your-domain>/api/whoami
+# or, before deploy, just:
+curl ifconfig.me; echo
+curl -6 ifconfig.me; echo   # IPv6 (if your ISP gives one)
+```
+
+### 4.2 Layer 1 (recommended): Cloudflare WAF Custom Rule
+
+Free plan includes 5 custom rules per zone — plenty for personal use.
+
+1. <https://dash.cloudflare.com> → **Websites → \<your-zone\>**.
+2. **Security → WAF → Custom rules → Create rule**.
+3. Name: `kanban home only`.
+4. Use the *Edit expression* mode and paste:
+   ```
+   (http.host eq "kanban.your-domain.com") and not (ip.src in {203.0.113.10})
+   ```
+   Replace the host and IP with your own. Add IPv6 inside the same set if you have one: `{203.0.113.10 2001:xxxx::/64}`.
+5. **Action: Block**.
+6. Save.
+
+Anyone outside the listed IPs gets a Cloudflare 1020 block page before the request reaches the Worker.
+
+### 4.3 Layer 2: Worker-level secret (`ALLOWED_IPS`)
+
+Already wired into `src/worker.ts`. Empty/unset = pass-through (fail-open — see §2.2). Set the secret to activate:
+
+```bash
+npx wrangler secret put ALLOWED_IPS
+# paste comma-separated IPs (no spaces): 203.0.113.10,2001:xxx::/64
+```
+
+Unset to disable:
+```bash
+npx wrangler secret delete ALLOWED_IPS
+```
+
+---
+
+## 5. If you want multi-user
 
 This project is **not** suitable as-is for shared use (team kanban, public SaaS, "just our 3 friends"). To make it safe for multiple users you would need to add, at minimum:
 
@@ -99,7 +145,7 @@ These are non-trivial changes. If you just need a personal task queue, the curre
 
 ---
 
-## 5. Reporting a vulnerability
+## 6. Reporting a vulnerability
 
 If you find a security issue in this codebase (not in your own deployment configuration — that's on you), please open an issue on the GitHub repo with the label `security`, or contact the maintainer privately if the issue is sensitive.
 

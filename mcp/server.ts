@@ -9,7 +9,7 @@ import type { Card } from "../src/core/card.js";
 import { STATUSES } from "../src/core/paths.js";
 
 const BASE_URL = (process.env.KANBAN_API_URL || "https://kanban.example.com").replace(/\/+$/, "");
-const WORKFLOWS_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "WORKFLOWS.md");
+const WORKFLOWS_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "agent-workflow.md");
 
 async function apiRaw(path: string, init?: RequestInit): Promise<string> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -44,7 +44,7 @@ server.registerTool(
   "get_workflows",
   {
     description:
-      "Read the kanban-ready workflow guide (WORKFLOWS.md). Call this FIRST in a session to learn the card lifecycle, transition rules, and standard MCP dispatch flow before using other tools.",
+      "Read the kanban-ready agent workflow guide (docs/agent-workflow.md). Call this FIRST in a session to learn the card lifecycle, transition rules, and standard MCP dispatch flow before using other tools.",
     inputSchema: {},
   },
   async () => {
