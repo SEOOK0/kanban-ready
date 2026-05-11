@@ -9,14 +9,15 @@
 ## 1. 상태와 전이
 
 ```
-draft → ready → done → deploy
-                            ↘
-                       discarded (모든 상태에서 가능, 종착)
+draft ──┬──> agent_working ──> ready ──> done ──> deploy
+        └────────────────────> ready                    ↘
+                                                   discarded (모든 상태에서 가능, 종착)
 ```
 
 | 상태 | 의미 |
 |---|---|
 | `draft` | 막 떠오른 아이디어. 구체화 안 됨. AI에 던질 수 없는 단계. |
+| `agent_working` | 에이전트가 draft를 받아 spec을 다듬는 중. 보드에 "작업중" 신호를 띄우는 상태. MCP에서 `start_agent_work`로 자동 진입. |
 | `ready` | AI가 바로 작업 시작 가능한 spec. 본문에 충분한 컨텍스트 포함. |
 | `done` | AI 작업 완료 (PR merge 등). 배포 대기. |
 | `deploy` | production 반영됨. |
@@ -24,7 +25,9 @@ draft → ready → done → deploy
 
 전이 규칙:
 - 전진은 한 칸씩만. `draft → done` 같은 직행 불가.
-- `draft → ready`는 본문이 비어있으면 거부된다 (`Insufficient spec`). spec/task를 먼저 채워야 한다.
+- `draft → ready` 직행도 허용 (agent_working을 건너뛸 수 있다). agent가 작업한다는 신호가 필요할 때만 agent_working을 거친다.
+- `draft → agent_working`은 본문이 비어있어도 통과한다 (spec 작성을 시작하는 단계).
+- 어떤 상태에서든 `ready`로 들어갈 땐 본문이 비어있으면 거부된다 (`Insufficient spec`). spec/task를 먼저 채워야 한다.
 - 모든 상태에서 `discarded` 가능 (draft 포함, 폐기 기록 남김).
 - 역방향 이동 없음. 다시 작업할 거면 새 카드 생성.
 
@@ -39,36 +42,42 @@ draft → ready → done → deploy
 **Step 1. 카드 내용 확인**
 - 사용자가 카드를 지목하면 `get_card(id)`로 본문을 읽는다.
 - 본문이 비어있으면 사용자와 대화하여 무엇을 만들 것인지 구체화한다. agent가 추측으로 본문을 채우지 않는다.
-- 합의된 내용을 `update_card(id, body=...)`로 영속화한다.
 
-**Step 2. 작업 요청 → spec / task 작성**
-- 사용자가 "이 카드 작업해줘" 식으로 요청하면 본문에 다음 두 항목을 추가한다:
+**Step 2. 작업 시작 신호 → agent_working으로 이동**
+- 사용자가 "이 카드 작업해줘" 식으로 요청하면 **먼저 `start_agent_work(id)`를 호출**한다. 보드에서 카드가 Agent Working 컬럼으로 이동해 사용자에게 진행중임이 즉시 보인다.
+- 이 단계에서 body가 비어있어도 OK. spec 작성은 다음 step에서.
+
+**Step 3. spec / task 작성**
+- 본문에 다음 두 항목을 추가한다:
   - **Spec**: 무엇을 만들 것인가 (목표, 제약, 완료 조건)
   - **Task**: 어떻게 할 것인가 (단계별 체크리스트)
 - 본문 갱신은 `update_card`. 작성 후 사용자에게 보여 confirm을 받는다.
 
-**Step 3. Ready로 이동**
+**Step 4. Ready로 이동**
 - spec/task가 본문에 들어있고 사용자 confirm을 받았으면 `move_card(id, "ready")`.
-- 본문이 비어있으면 서버가 transition을 거부한다 (`Insufficient spec`). 그러면 Step 2부터 다시.
+- 본문이 비어있으면 서버가 transition을 거부한다 (`Insufficient spec`). 그러면 Step 3부터 다시.
 
-**Step 4. 코드 작업 — 사용자의 별도 요청 후**
+**Step 5. 코드 작업 — 사용자의 별도 요청 후**
 - 사용자가 "코드 작업 진행해줘" 식으로 요청해야 시작한다. ready 진입만으로 자동 시작하지 않는다.
 - 호스트 도구 (Read/Write/Edit/Bash)로 카드 spec에 따라 변경을 적용한다. 검증 (테스트, typecheck 등)까지 통과시킨다.
 
-**Step 5. Done으로 이동**
+**Step 6. Done으로 이동**
 - 코드 변경 + 검증 완료 후 `move_card(id, "done")`.
 
-**Step 6. Deploy로 이동 (선택)**
+**Step 7. Deploy로 이동 (선택)**
 - 실제 production 반영 후 `move_card(id, "deploy")`. 보통 사람이 배포까지 한 뒤 별도로 옮긴다.
+
+> agent_working을 건너뛰고 싶을 때 (spec이 이미 본문에 충분히 들어있고 작업중 신호가 필요 없을 때): Step 2를 생략하고 곧장 `move_card(id, "ready")`로 가도 된다. 분기는 허용된다.
 
 ### 2.2 한 호흡으로 끝까지
 
 사용자가 "이 카드 끝까지 가줘" 식으로 요청하면:
 
-- **draft인데 body 충분**: Step 2 (spec/task 보강) → 3 (ready) → 4 (코드) → 5 (done) 까지 한 흐름으로 진행 가능.
-- **ready인데 spec 충분**: Step 4 → 5 까지 한 흐름.
+- **draft인데 body 충분**: Step 2 (`start_agent_work`) → 3 (spec/task 보강) → 4 (ready) → 5 (코드) → 6 (done) 까지 한 흐름. body가 이미 충분하면 Step 2를 생략하고 곧장 ready로 가도 된다 (분기 허용).
+- **agent_working에서 이어 받음**: Step 3 → 4 → 5 → 6 까지 한 흐름.
+- **ready인데 spec 충분**: Step 5 → 6 까지 한 흐름.
 
-단 한 칸씩 이동 규칙은 그대로. ready를 건너뛸 수는 없다. 중간에 사용자가 멈출 의도를 표현하면 즉시 멈춘다.
+단 한 칸씩 이동 규칙은 그대로. done/deploy 직행은 안 된다. 중간에 사용자가 멈출 의도를 표현하면 즉시 멈춘다.
 
 ### 2.3 ready 카드 둘러보기
 

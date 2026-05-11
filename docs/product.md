@@ -9,6 +9,7 @@
 Claude/Codex 같은 AI 코딩 에이전트에게 던질 작업을 모아두는 **개인 프롬프트 디스패쳐**. 흐름은 단순하다.
 
 - `draft` — 떠오른 아이디어를 빠르게 던져두는 인박스
+- `agent_working` — 에이전트가 draft를 받아 spec을 다듬는 중 (보드에 "작업중" 신호)
 - `ready` — 구체화되어 지금 AI에게 보낼 수 있는 작업
 - `done` — AI 작업 완료. 배포 대기 (PR merge 등)
 - `deploy` — production 반영됨
@@ -19,13 +20,17 @@ Claude/Codex 같은 AI 코딩 에이전트에게 던질 작업을 모아두는 *
 ### 전이 규칙 (한 방향)
 
 ```
-draft ──> ready ──> done ──> deploy
-  │         │         │         │
-  ▼         ▼         ▼         ▼
-        discarded (종착, 복원 불가)
+draft ──┬──> agent_working ──> ready ──> done ──> deploy
+        └──────────────────────> ready
+  │           │                    │         │         │
+  ▼           ▼                    ▼         ▼         ▼
+                  discarded (종착, 복원 불가)
 ```
 
-- `draft → ready` 만 전진. done/deploy 직행 불가
+- 전진은 한 칸씩. done/deploy 직행 불가
+- `draft → ready` 직행 허용 (agent_working은 건너뛸 수 있음)
+- `agent_working`은 MCP에서 자동 진입 (`start_agent_work`). body 비어있어도 OK
+- `ready`로 들어갈 땐 본문(spec) 필수
 - 모든 상태에서 `discarded` 가능 (draft 포함, 폐기 기록 남김)
 - 역방향 이동 없음. 다시 작업하려면 새 카드 생성
 - 카드 자체 hard delete는 별개 액션 (특히 draft 정리용)

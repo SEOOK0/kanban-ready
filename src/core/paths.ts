@@ -1,4 +1,4 @@
-export const STATUSES = ["draft", "ready", "done", "deploy", "discarded"] as const;
+export const STATUSES = ["draft", "agent_working", "ready", "done", "deploy", "discarded"] as const;
 export type Status = (typeof STATUSES)[number];
 
 export function isStatus(s: string): s is Status {
@@ -6,7 +6,8 @@ export function isStatus(s: string): s is Status {
 }
 
 export const TRANSITIONS: Record<Status, readonly Status[]> = {
-  draft: ["ready", "discarded"],
+  draft: ["agent_working", "ready", "discarded"],
+  agent_working: ["ready", "discarded"],
   ready: ["done", "discarded"],
   done: ["deploy", "discarded"],
   deploy: ["discarded"],

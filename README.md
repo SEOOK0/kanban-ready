@@ -103,7 +103,7 @@ docs/               operations / product / mcp-setup / agent-workflow
 |---|---|---|
 | GET | `/api/health` | – |
 | GET | `/api/whoami` | – (returns your `cf-connecting-ip`) |
-| GET | `/api/cards?status=draft\|ready\|done\|deploy\|discarded` | – |
+| GET | `/api/cards?status=draft\|agent_working\|ready\|done\|deploy\|discarded` | – |
 | GET | `/api/cards/:id` | – |
 | POST | `/api/cards` | `{title, body?, tags?, status?}` |
 | PATCH | `/api/cards/:id` | `{title?, body?, tags?}` |

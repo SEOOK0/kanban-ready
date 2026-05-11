@@ -145,7 +145,7 @@ export class TransitionError extends Error {
 
 export class SpecRequiredError extends Error {
   constructor() {
-    super("Insufficient spec: draft → ready requires a non-empty body. Use update_card to add spec/task first.");
+    super("Insufficient spec: moving to ready requires a non-empty body. Use update_card to add spec/task first.");
     this.name = "SpecRequiredError";
   }
 }
@@ -162,7 +162,7 @@ export async function moveCard(
   if (!canTransition(current.status, target)) {
     throw new TransitionError(current.status, target);
   }
-  if (current.status === "draft" && target === "ready" && !current.body.trim()) {
+  if (target === "ready" && !current.body.trim()) {
     throw new SpecRequiredError();
   }
 

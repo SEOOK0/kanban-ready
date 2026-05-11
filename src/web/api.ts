@@ -1,7 +1,8 @@
-export type Status = "draft" | "ready" | "done" | "deploy" | "discarded";
+export type Status = "draft" | "agent_working" | "ready" | "done" | "deploy" | "discarded";
 
 export const TRANSITIONS: Record<Status, readonly Status[]> = {
-  draft: ["ready", "discarded"],
+  draft: ["agent_working", "ready", "discarded"],
+  agent_working: ["ready", "discarded"],
   ready: ["done", "discarded"],
   done: ["deploy", "discarded"],
   deploy: ["discarded"],
