@@ -11,6 +11,7 @@
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "mcp:dev": "tsx mcp/server.ts",
+    "test": "node --import tsx --test tests/paths.test.ts",
     "typecheck": "tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.mcp.json --noEmit"
   },
   "dependencies": {

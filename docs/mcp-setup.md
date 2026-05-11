@@ -30,7 +30,7 @@ The agent-side workflow (transition rules, dispatch flow, tool sequencing) is de
 | `get_prompt` | Fetch the AI-ready prompt text for a card id |
 | `create_card` | Capture a new card (defaults to draft) |
 | `update_card` | Edit a card's title / body / tags (status via `move_card`) |
-| `move_card` | Move a card across `draft → [agent_working →] ready → done → deploy` (or any → `discarded`) |
+| `move_card` | Move a card across `draft ↔ agent_working ↔ ready ↔ done ↔ deploy`, discard it, or restore it from `discarded` |
 | `start_agent_work` | Mark a draft as actively being worked on by an agent (`draft → agent_working`) |
 
 ---

@@ -423,27 +423,26 @@ function RulesModal({ onClose }: RulesModalProps) {
                 <span key={s} className="rules-flow-cell">
                   <span className={`rules-node ${s}`}>{s}</span>
                   {i < forward.length - 1 ? (
-                    <span className="rules-arrow" aria-hidden="true">→</span>
+                    <span className="rules-arrow" aria-hidden="true">↔</span>
                   ) : null}
                 </span>
               ))}
             </div>
             <div className="rules-flow-row terminal">
               <span className="rules-source">모든 상태</span>
-              <span className="rules-arrow" aria-hidden="true">→</span>
+              <span className="rules-arrow" aria-hidden="true">↔</span>
               <span className="rules-node discarded">discarded</span>
-              <span className="rules-terminal-note">(종착, 복원 불가)</span>
+              <span className="rules-terminal-note">(복구 가능)</span>
             </div>
           </div>
 
           <ul className="rules-notes">
-            <li>전진은 한 칸씩만. done/deploy 직행 불가.</li>
+            <li>전진/역방향 모두 한 칸씩만. done/deploy 직행 불가.</li>
             <li>draft → ready 직행도 허용 (agent_working은 건너뛸 수 있다).</li>
             <li>agent_working은 에이전트가 draft를 받아 spec을 다듬는 중인 상태. MCP에서 자동 진입.</li>
             <li>ready로 들어갈 땐 본문(spec) 필수. 비어있으면 거부.</li>
             <li>모든 상태에서 discarded 가능 (draft 포함, 폐기 기록 남김).</li>
-            <li>역방향 이동 없음. 다시 작업하려면 새 카드 생성.</li>
-            <li>discarded는 종착지. 복원 불가, 카드 삭제는 별개 액션.</li>
+            <li>discarded에서도 원하는 활성 상태로 복구 가능. 카드 삭제는 별개 액션.</li>
           </ul>
         </div>
       </div>

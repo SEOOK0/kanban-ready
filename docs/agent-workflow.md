@@ -9,9 +9,10 @@
 ## 1. 상태와 전이
 
 ```
-draft ──┬──> agent_working ──> ready ──> done ──> deploy
-        └────────────────────> ready                    ↘
-                                                   discarded (모든 상태에서 가능, 종착)
+draft ──┬── agent_working ── ready ── done ── deploy
+        └───────────────────> ready
+
+discarded는 모든 상태에서 들어갈 수 있고, 다시 원하는 활성 상태로 복구할 수 있다.
 ```
 
 | 상태 | 의미 |
@@ -21,15 +22,15 @@ draft ──┬──> agent_working ──> ready ──> done ──> deploy
 | `ready` | AI가 바로 작업 시작 가능한 spec. 본문에 충분한 컨텍스트 포함. |
 | `done` | AI 작업 완료 (PR merge 등). 배포 대기. |
 | `deploy` | production 반영됨. |
-| `discarded` | 폐기 (의도적 폐기 + 롤백 모두 포함). 종착지, 복원 불가. |
+| `discarded` | 폐기 (의도적 폐기 + 롤백 모두 포함). 필요하면 활성 상태로 복구 가능. |
 
 전이 규칙:
-- 전진은 한 칸씩만. `draft → done` 같은 직행 불가.
+- 전진/역방향은 한 칸씩만. `draft → done`, `done → agent_working` 같은 직행 불가.
 - `draft → ready` 직행도 허용 (agent_working을 건너뛸 수 있다). agent가 작업한다는 신호가 필요할 때만 agent_working을 거친다.
 - `draft → agent_working`은 본문이 비어있어도 통과한다 (spec 작성을 시작하는 단계).
 - 어떤 상태에서든 `ready`로 들어갈 땐 본문이 비어있으면 거부된다 (`Insufficient spec`). spec/task를 먼저 채워야 한다.
 - 모든 상태에서 `discarded` 가능 (draft 포함, 폐기 기록 남김).
-- 역방향 이동 없음. 다시 작업할 거면 새 카드 생성.
+- `discarded`에서도 원하는 활성 상태로 복구 가능. 복구할 때도 `ready`로 들어가면 본문 필수 규칙이 적용된다.
 
 ---
 
@@ -103,7 +104,7 @@ draft에 던질 때는 title 한 줄로도 충분.
 - 안 하기로 결정한 작업: `draft`/`ready` 카드를 `move_card(id, "discarded")`.
 - 배포 후 롤백: `done`/`deploy` 카드를 `move_card(id, "discarded")`.
 
-복원은 안 된다. 다시 살릴 일이 생기면 새 카드를 생성하고 본문에 이전 카드 id를 참조로 적는다.
+실수로 폐기했거나 다시 살릴 일이 생기면 `discarded`에서 필요한 활성 상태로 `move_card`를 호출해 복구한다. 단, `ready`로 바로 복구하려면 본문(spec)이 비어있지 않아야 한다.
 
 draft 정리는 `discarded`로 쌓지 말고 그냥 dashboard에서 사람이 hard delete 한다 (MCP에서 delete는 노출하지 않는다).
 

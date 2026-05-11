@@ -13,26 +13,26 @@ Claude/Codex 같은 AI 코딩 에이전트에게 던질 작업을 모아두는 *
 - `ready` — 구체화되어 지금 AI에게 보낼 수 있는 작업
 - `done` — AI 작업 완료. 배포 대기 (PR merge 등)
 - `deploy` — production 반영됨
-- `discarded` — 폐기 (의도적 폐기 + 롤백 모두 포함). 종착지
+- `discarded` — 폐기 (의도적 폐기 + 롤백 모두 포함). 필요하면 복구 가능
 
 핵심 액션은 **카드를 ready로 옮기고 → "Copy prompt" → AI 에이전트에 붙여넣기**다. 이 한 동선이 다른 모든 것보다 우선한다. 일반 to-do/팀 칸반이 아니라, AI 워크플로의 큐로 정의된다.
 
-### 전이 규칙 (한 방향)
+### 전이 규칙
 
 ```
-draft ──┬──> agent_working ──> ready ──> done ──> deploy
+draft ──┬── agent_working ── ready ── done ── deploy
         └──────────────────────> ready
   │           │                    │         │         │
   ▼           ▼                    ▼         ▼         ▼
-                  discarded (종착, 복원 불가)
+                  discarded (복구 가능)
 ```
 
-- 전진은 한 칸씩. done/deploy 직행 불가
+- 전진/역방향은 한 칸씩. done/deploy 직행, done→agent_working 같은 건 불가
 - `draft → ready` 직행 허용 (agent_working은 건너뛸 수 있음)
 - `agent_working`은 MCP에서 자동 진입 (`start_agent_work`). body 비어있어도 OK
 - `ready`로 들어갈 땐 본문(spec) 필수
 - 모든 상태에서 `discarded` 가능 (draft 포함, 폐기 기록 남김)
-- 역방향 이동 없음. 다시 작업하려면 새 카드 생성
+- `discarded`에서도 원하는 활성 상태로 복구 가능
 - 카드 자체 hard delete는 별개 액션 (특히 draft 정리용)
 
 ## Brand Personality

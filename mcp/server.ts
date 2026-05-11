@@ -165,7 +165,7 @@ server.registerTool(
   "move_card",
   {
     description:
-      "Move a card to draft|agent_working|ready|done|deploy|discarded. Forward path is one step at a time (draft→[agent_working→]ready→done→deploy); draft→ready direct is also allowed. Skipping further (e.g. draft→done) rejects with 'Invalid transition'. Any move into 'ready' requires a non-empty body (spec) — write spec/task via update_card first or the move is rejected with 'Insufficient spec'. 'discarded' is reachable from any state and is terminal. To mark a draft as actively being worked on by an agent, prefer the dedicated start_agent_work tool. See get_workflows for full rules.",
+      "Move a card to draft|agent_working|ready|done|deploy|discarded. Active workflow moves one step at a time in either direction (draft↔agent_working↔ready↔done↔deploy); draft→ready direct is also allowed. Skipping further (e.g. draft→done or done→agent_working) rejects with 'Invalid transition'. Any move into 'ready' requires a non-empty body (spec) — write spec/task via update_card first or the move is rejected with 'Insufficient spec'. 'discarded' is reachable from any state and can be restored to any active status. To mark a draft as actively being worked on by an agent, prefer the dedicated start_agent_work tool. See get_workflows for full rules.",
     inputSchema: {
       id: z.string().min(1).describe("Card id"),
       status: z.enum(STATUSES).describe("Target column"),
@@ -187,7 +187,7 @@ server.registerTool(
   "start_agent_work",
   {
     description:
-      "Mark a draft card as actively being worked on by an agent (moves it to the 'agent_working' column). Call this the moment you start refining a draft's spec — the column flip gives the user a real-time signal that the agent has picked the card up. Body may be empty at this point; you fill it via update_card while in agent_working. The card must currently be in 'draft' or already in 'agent_working' (idempotent in the latter case).",
+      "Mark a draft card as actively being worked on by an agent (moves it to the 'agent_working' column). Call this the moment you start refining a draft's spec — the column flip gives the user a real-time signal that the agent has picked the card up. Body may be empty at this point; you fill it via update_card while in agent_working. The card is usually in 'draft' or already in 'agent_working' (idempotent in the latter case); use move_card for general undo/restore moves.",
     inputSchema: {
       id: z.string().min(1).describe("Card id"),
     },
