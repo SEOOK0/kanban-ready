@@ -81,7 +81,12 @@ To keep your edited `wrangler.toml` from showing up in git diffs (recommended fo
 
 The workflow's "Inject deploy config" step rewrites `wrangler.toml` placeholders with these secrets at build time. Secrets are passed as env vars (not shell-interpolated) and the rewritten file lives only on the ephemeral runner.
 
-**Schema migrations are still manual** — even with CI deploy, run `npm run db:migrate:remote` from your machine when you add a migration. The CI does *not* run migrations, by design (a bad migration in CI would break prod with no review step).
+**Schema migrations are still manual** — by design, no workflow auto-runs them on push (a bad migration would break prod with no review step). Pick whichever surface fits:
+
+- **From your machine**: `npm run db:migrate:remote` (needs `wrangler login` and the real `database_id` in `wrangler.toml`).
+- **From GitHub Actions UI**: open the *Migrate D1* workflow (`.github/workflows/migrate.yml`) → "Run workflow" → pick the branch holding the new migration. The workflow is `workflow_dispatch`-only, lists pending migrations first, then applies. Reuses the same secrets as deploy. Useful when you don't have `wrangler` set up locally, or when applying migrations from a feature branch *before* merging the PR.
+
+Run the migration **before** merging the PR — the widened schema is forward-compatible with the old worker, so applying first creates a no-failure window for the new code to roll out.
 
 ## Project layout
 
@@ -103,7 +108,7 @@ docs/               operations / product / mcp-setup / agent-workflow
 |---|---|---|
 | GET | `/api/health` | – |
 | GET | `/api/whoami` | – (returns your `cf-connecting-ip`) |
-| GET | `/api/cards?status=draft\|ready\|done\|deploy\|discarded` | – |
+| GET | `/api/cards?status=draft\|agent_working\|ready\|done\|deploy\|discarded` | – |
 | GET | `/api/cards/:id` | – |
 | POST | `/api/cards` | `{title, body?, tags?, status?}` |
 | PATCH | `/api/cards/:id` | `{title?, body?, tags?}` |

@@ -100,7 +100,7 @@ textarea:focus {
 .board {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
   padding: 12px;
   overflow: hidden;
@@ -148,6 +148,9 @@ textarea:focus {
 .column-header.draft .label::before {
   background: oklch(60% 0.012 50);
 }
+.column-header.agent_working .label::before {
+  background: oklch(70% 0.13 75);
+}
 .column-header.ready .label::before {
   background: var(--accent);
 }
@@ -163,6 +166,7 @@ textarea:focus {
 
 /* Label tone: only ready stays full text, rest drop to muted to keep ready as the spine */
 .column-header.draft .label,
+.column-header.agent_working .label,
 .column-header.done .label,
 .column-header.deploy .label,
 .column-header.discarded .label {
@@ -353,6 +357,10 @@ textarea:focus {
   color: var(--text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+.status-badge.agent_working {
+  color: var(--text);
+  border-color: oklch(70% 0.13 75);
+}
 .status-badge.ready {
   color: var(--text);
   border-color: var(--accent);
@@ -467,6 +475,7 @@ textarea:focus {
   flex-shrink: 0;
 }
 .rules-node.draft::before { background: oklch(60% 0.012 50); }
+.rules-node.agent_working::before { background: oklch(70% 0.13 75); }
 .rules-node.ready::before { background: var(--accent); }
 .rules-node.done::before { background: oklch(58% 0.035 220); }
 .rules-node.deploy::before { background: oklch(62% 0.06 150); }

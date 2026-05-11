@@ -14,6 +14,7 @@ import {
 
 const COLUMNS: { status: Status; label: string }[] = [
   { status: "draft", label: "Draft" },
+  { status: "agent_working", label: "Agent Working" },
   { status: "ready", label: "Ready" },
   { status: "done", label: "Done" },
   { status: "deploy", label: "Deploy" },
@@ -21,7 +22,7 @@ const COLUMNS: { status: Status; label: string }[] = [
 ];
 
 function emptyGroups(): Record<Status, Card[]> {
-  return { draft: [], ready: [], done: [], deploy: [], discarded: [] };
+  return { draft: [], agent_working: [], ready: [], done: [], deploy: [], discarded: [] };
 }
 
 function firstLine(body: string, max = 80): string {
@@ -403,7 +404,7 @@ function RulesModal({ onClose }: RulesModalProps) {
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
-  const forward: Status[] = ["draft", "ready", "done", "deploy"];
+  const forward: Status[] = ["draft", "agent_working", "ready", "done", "deploy"];
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -434,6 +435,9 @@ function RulesModal({ onClose }: RulesModalProps) {
 
           <ul className="rules-notes">
             <li>전진은 한 칸씩만. done/deploy 직행 불가.</li>
+            <li>draft → ready 직행도 허용 (agent_working은 건너뛸 수 있다).</li>
+            <li>agent_working은 에이전트가 draft를 받아 spec을 다듬는 중인 상태. MCP에서 자동 진입.</li>
+            <li>ready로 들어갈 땐 본문(spec) 필수. 비어있으면 거부.</li>
             <li>모든 상태에서 discarded 가능 (draft 포함, 폐기 기록 남김).</li>
             <li>역방향 이동 없음. 다시 작업하려면 새 카드 생성.</li>
             <li>discarded는 종착지. 복원 불가, 카드 삭제는 별개 액션.</li>

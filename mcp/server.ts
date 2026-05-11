@@ -80,7 +80,7 @@ server.registerTool(
   "list_cards",
   {
     description:
-      "List kanban cards. Optionally filter by status (draft|ready|done|deploy|discarded). Most recently updated first. For dispatch, filter by 'ready'.",
+      "List kanban cards. Optionally filter by status (draft|agent_working|ready|done|deploy|discarded). Most recently updated first. For dispatch, filter by 'ready'.",
     inputSchema: {
       status: z.enum(STATUSES).optional().describe("Filter by status"),
     },
@@ -165,7 +165,7 @@ server.registerTool(
   "move_card",
   {
     description:
-      "Move a card to draft|ready|done|deploy|discarded. Forward path is one step at a time (draft→ready→done→deploy); skipping rejects with 'Invalid transition'. draft→ready also requires a non-empty body (spec) — write spec/task via update_card first or the move is rejected with 'Insufficient spec'. 'discarded' is reachable from any state and is terminal. See get_workflows for full rules.",
+      "Move a card to draft|agent_working|ready|done|deploy|discarded. Forward path is one step at a time (draft→[agent_working→]ready→done→deploy); draft→ready direct is also allowed. Skipping further (e.g. draft→done) rejects with 'Invalid transition'. Any move into 'ready' requires a non-empty body (spec) — write spec/task via update_card first or the move is rejected with 'Insufficient spec'. 'discarded' is reachable from any state and is terminal. To mark a draft as actively being worked on by an agent, prefer the dedicated start_agent_work tool. See get_workflows for full rules.",
     inputSchema: {
       id: z.string().min(1).describe("Card id"),
       status: z.enum(STATUSES).describe("Target column"),
@@ -178,6 +178,27 @@ server.registerTool(
     );
     return {
       content: [{ type: "text", text: `moved → ${card.status}: #${card.number} ${card.id} ${card.title}` }],
+      structuredContent: { card },
+    };
+  },
+);
+
+server.registerTool(
+  "start_agent_work",
+  {
+    description:
+      "Mark a draft card as actively being worked on by an agent (moves it to the 'agent_working' column). Call this the moment you start refining a draft's spec — the column flip gives the user a real-time signal that the agent has picked the card up. Body may be empty at this point; you fill it via update_card while in agent_working. The card must currently be in 'draft' or already in 'agent_working' (idempotent in the latter case).",
+    inputSchema: {
+      id: z.string().min(1).describe("Card id"),
+    },
+  },
+  async ({ id }) => {
+    const { card } = await apiJson<{ card: Card }>(
+      `/api/cards/${encodeURIComponent(id)}/move`,
+      { method: "POST", body: JSON.stringify({ status: "agent_working" }) },
+    );
+    return {
+      content: [{ type: "text", text: `agent working: #${card.number} ${card.id} ${card.title}` }],
       structuredContent: { card },
     };
   },
