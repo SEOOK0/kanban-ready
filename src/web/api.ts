@@ -2,11 +2,11 @@ export type Status = "draft" | "agent_working" | "ready" | "done" | "deploy" | "
 
 export const TRANSITIONS: Record<Status, readonly Status[]> = {
   draft: ["agent_working", "ready", "discarded"],
-  agent_working: ["ready", "discarded"],
-  ready: ["done", "discarded"],
-  done: ["deploy", "discarded"],
-  deploy: ["discarded"],
-  discarded: [],
+  agent_working: ["draft", "ready", "discarded"],
+  ready: ["agent_working", "done", "discarded"],
+  done: ["ready", "deploy", "discarded"],
+  deploy: ["done", "discarded"],
+  discarded: ["draft", "agent_working", "ready", "done", "deploy"],
 };
 
 export function canTransition(from: Status, to: Status): boolean {
