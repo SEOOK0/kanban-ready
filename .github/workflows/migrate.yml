@@ -1,0 +1,52 @@
+name: Migrate D1
+
+# Manual-only by design. The deploy workflow does NOT run migrations
+# automatically (a bad migration would break prod with no review step).
+# Trigger this from the Actions tab after reviewing the migration in the PR,
+# and BEFORE merging — applying first keeps the old worker code compatible
+# with the widened schema while the new code is still queued for deploy.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: migrate-d1
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: github.repository == 'devstefancho/kanban-ready'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Inject deploy config
+        env:
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+          PROD_DOMAIN: ${{ secrets.PROD_DOMAIN }}
+        run: |
+          sed -i "s|<your-d1-database-id>|${D1_DATABASE_ID}|g" wrangler.toml
+          sed -i "s|kanban\.example\.com|${PROD_DOMAIN}|g" wrangler.toml
+
+      - name: List pending migrations
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations list DB --remote
+
+      - name: Apply migrations
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply DB --remote
