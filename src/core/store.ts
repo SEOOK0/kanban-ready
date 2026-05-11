@@ -1,6 +1,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { type Agent, type Status, canTransition, isAgent, isStatus } from "./paths.js";
 import { type Card, makeId } from "./card.js";
+import { normalizeDependsOn } from "./meta.js";
 
 interface Row {
   id: string;
@@ -75,19 +76,6 @@ export interface CreateInput {
   depends_on?: number[];
   session_id?: string | null;
   agent?: Agent | null;
-}
-
-function normalizeDependsOn(input: number[] | undefined): number[] {
-  if (!input) return [];
-  const seen = new Set<number>();
-  const out: number[] = [];
-  for (const n of input) {
-    if (!Number.isInteger(n) || n <= 0) continue;
-    if (seen.has(n)) continue;
-    seen.add(n);
-    out.push(n);
-  }
-  return out;
 }
 
 export async function createCard(db: D1Database, input: CreateInput): Promise<Card> {

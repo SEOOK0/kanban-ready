@@ -1,6 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { Hono } from "hono";
-import { type Agent, type Status, isAgent, isStatus } from "./core/paths.js";
+import { type Status, isStatus } from "./core/paths.js";
 import {
   createCard,
   deleteCard,
@@ -14,26 +14,12 @@ import {
   updateCard,
 } from "./core/store.js";
 import { buildPrompt } from "./core/prompt.js";
-
-function normalizeDependsOnInput(raw: unknown): number[] | undefined {
-  if (raw === undefined) return undefined;
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((n): n is number => Number.isInteger(n) && n > 0);
-}
-
-function normalizeAgentInput(raw: unknown): Agent | null | undefined {
-  if (raw === undefined) return undefined;
-  if (raw === null) return null;
-  return isAgent(raw) ? raw : undefined;
-}
-
-function normalizeSessionIdInput(raw: unknown): string | null | undefined {
-  if (raw === undefined) return undefined;
-  if (raw === null) return null;
-  if (typeof raw !== "string") return undefined;
-  const trimmed = raw.trim();
-  return trimmed === "" ? null : trimmed;
-}
+import {
+  InputValidationError,
+  normalizeAgentInput,
+  normalizeDependsOnInput,
+  normalizeSessionIdInput,
+} from "./core/meta.js";
 
 type Bindings = {
   DB: D1Database;
@@ -89,17 +75,22 @@ app.post("/api/cards", async (c) => {
   if (!body.title || !body.title.trim()) {
     return c.json({ error: "title required" }, 400);
   }
-  const status: Status = body.status && isStatus(body.status) ? body.status : "draft";
-  const card = await createCard(c.env.DB, {
-    title: body.title.trim(),
-    body: body.body || "",
-    tags: body.tags || [],
-    status,
-    depends_on: normalizeDependsOnInput(body.depends_on),
-    session_id: normalizeSessionIdInput(body.session_id),
-    agent: normalizeAgentInput(body.agent),
-  });
-  return c.json({ card }, 201);
+  try {
+    const status: Status = body.status && isStatus(body.status) ? body.status : "draft";
+    const card = await createCard(c.env.DB, {
+      title: body.title.trim(),
+      body: body.body || "",
+      tags: body.tags || [],
+      status,
+      depends_on: normalizeDependsOnInput(body.depends_on),
+      session_id: normalizeSessionIdInput(body.session_id),
+      agent: normalizeAgentInput(body.agent),
+    });
+    return c.json({ card }, 201);
+  } catch (err) {
+    if (err instanceof InputValidationError) return c.json({ error: err.message }, 400);
+    throw err;
+  }
 });
 
 app.patch("/api/cards/:id", async (c) => {
@@ -123,6 +114,7 @@ app.patch("/api/cards/:id", async (c) => {
     });
     return c.json({ card });
   } catch (err) {
+    if (err instanceof InputValidationError) return c.json({ error: err.message }, 400);
     if (err instanceof NotFoundError) return c.json({ error: err.message }, 404);
     throw err;
   }
@@ -148,6 +140,7 @@ app.post("/api/cards/:id/move", async (c) => {
     const card = await moveCard(c.env.DB, id, body.status, meta);
     return c.json({ card });
   } catch (err) {
+    if (err instanceof InputValidationError) return c.json({ error: err.message }, 400);
     if (err instanceof TransitionError || err instanceof SpecRequiredError) {
       return c.json({ error: err.message }, 400);
     }

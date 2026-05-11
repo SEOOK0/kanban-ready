@@ -144,6 +144,8 @@ server.registerTool(
         .describe("Card numbers this card depends on (e.g. [3, 7]). Replaces, not appends."),
       session_id: z
         .string()
+        .trim()
+        .min(1)
         .nullable()
         .optional()
         .describe("Agent session id. Pass null to clear."),
@@ -222,6 +224,7 @@ server.registerTool(
         .describe("Which agent is starting work: 'cc' (Claude Code) or 'codex' (Codex CLI)."),
       session_id: z
         .string()
+        .trim()
         .min(1)
         .describe("Your current session id (e.g. the UUID of this Claude Code or Codex CLI session)."),
       depends_on: z
@@ -262,7 +265,7 @@ server.registerTool(
         .array(z.number().int().positive())
         .optional()
         .describe("Card numbers this card depends on (e.g. [3, 7])."),
-      session_id: z.string().min(1).optional().describe("Agent session id, if known at creation."),
+      session_id: z.string().trim().min(1).optional().describe("Agent session id, if known at creation."),
       agent: z.enum(AGENTS).optional().describe("Which agent will run this card, if known."),
     },
   },
