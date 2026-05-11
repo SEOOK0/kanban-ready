@@ -1,4 +1,4 @@
-import type { Status } from "./paths.js";
+import type { Agent, Status } from "./paths.js";
 
 export interface Card {
   id: string;
@@ -9,7 +9,13 @@ export interface Card {
   created: string;
   updated: string;
   tags: string[];
+  depends_on: number[];
+  session_id: string | null;
+  agent: Agent | null;
 }
+
+export const DRAFT_BODY_TEMPLATE =
+  "## 목표\n\n## 컨텍스트\n\n## 작업 단계\n\n## 검증 기준\n";
 
 export function slugify(title: string): string {
   const base = title

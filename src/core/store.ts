@@ -1,5 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { type Status, canTransition, isStatus } from "./paths.js";
+import { type Agent, type Status, canTransition, isAgent, isStatus } from "./paths.js";
 import { type Card, makeId } from "./card.js";
 
 interface Row {
@@ -11,6 +11,20 @@ interface Row {
   tags: string;
   created: string;
   updated: string;
+  depends_on: string;
+  session_id: string | null;
+  agent: string | null;
+}
+
+function parseDependsOn(raw: string | null | undefined): number[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((n): n is number => Number.isInteger(n) && n > 0);
+  } catch {
+    return [];
+  }
 }
 
 function rowToCard(row: Row): Card {
@@ -20,6 +34,7 @@ function rowToCard(row: Row): Card {
     if (Array.isArray(parsed)) tags = parsed.filter((t) => typeof t === "string");
   } catch {}
   const status: Status = isStatus(row.status) ? row.status : "draft";
+  const agent: Agent | null = row.agent && isAgent(row.agent) ? row.agent : null;
   return {
     id: row.id,
     number: row.number,
@@ -29,6 +44,9 @@ function rowToCard(row: Row): Card {
     created: row.created,
     updated: row.updated,
     tags,
+    depends_on: parseDependsOn(row.depends_on),
+    session_id: row.session_id ?? null,
+    agent,
   };
 }
 
@@ -54,6 +72,22 @@ export interface CreateInput {
   body?: string;
   tags?: string[];
   status?: Status;
+  depends_on?: number[];
+  session_id?: string | null;
+  agent?: Agent | null;
+}
+
+function normalizeDependsOn(input: number[] | undefined): number[] {
+  if (!input) return [];
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const n of input) {
+    if (!Number.isInteger(n) || n <= 0) continue;
+    if (seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+  }
+  return out;
 }
 
 export async function createCard(db: D1Database, input: CreateInput): Promise<Card> {
@@ -75,13 +109,27 @@ export async function createCard(db: D1Database, input: CreateInput): Promise<Ca
   }
 
   const tags = input.tags || [];
+  const depends_on = normalizeDependsOn(input.depends_on);
+  const session_id = input.session_id ?? null;
+  const agent: Agent | null = input.agent && isAgent(input.agent) ? input.agent : null;
   const inserted = await db
     .prepare(
-      "INSERT INTO cards (id, number, title, status, body, tags, created, updated) " +
-        "VALUES (?, (SELECT COALESCE(MAX(number), 0) + 1 FROM cards), ?, ?, ?, ?, ?, ?) " +
+      "INSERT INTO cards (id, number, title, status, body, tags, created, updated, depends_on, session_id, agent) " +
+        "VALUES (?, (SELECT COALESCE(MAX(number), 0) + 1 FROM cards), ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
         "RETURNING number",
     )
-    .bind(id, input.title, status, input.body || "", JSON.stringify(tags), iso, iso)
+    .bind(
+      id,
+      input.title,
+      status,
+      input.body || "",
+      JSON.stringify(tags),
+      iso,
+      iso,
+      JSON.stringify(depends_on),
+      session_id,
+      agent,
+    )
     .first<{ number: number }>();
   if (!inserted) throw new Error("createCard: insert returned no row");
 
@@ -94,6 +142,9 @@ export async function createCard(db: D1Database, input: CreateInput): Promise<Ca
     created: iso,
     updated: iso,
     tags,
+    depends_on,
+    session_id,
+    agent,
   };
 }
 
@@ -101,6 +152,9 @@ export interface UpdateInput {
   body?: string;
   title?: string;
   tags?: string[];
+  depends_on?: number[];
+  session_id?: string | null;
+  agent?: Agent | null;
 }
 
 export class NotFoundError extends Error {
@@ -118,19 +172,38 @@ export async function updateCard(
   const current = await getCard(db, id);
   if (!current) throw new NotFoundError(id);
 
+  const depends_on = patch.depends_on !== undefined ? normalizeDependsOn(patch.depends_on) : current.depends_on;
+  const session_id = patch.session_id !== undefined ? patch.session_id : current.session_id;
+  let agent: Agent | null = current.agent;
+  if (patch.agent !== undefined) {
+    agent = patch.agent === null ? null : isAgent(patch.agent) ? patch.agent : current.agent;
+  }
+
   const next: Card = {
     ...current,
     body: patch.body ?? current.body,
     title: patch.title ?? current.title,
     tags: patch.tags ?? current.tags,
+    depends_on,
+    session_id,
+    agent,
     updated: new Date().toISOString(),
   };
 
   await db
     .prepare(
-      "UPDATE cards SET title = ?, body = ?, tags = ?, updated = ? WHERE id = ?",
+      "UPDATE cards SET title = ?, body = ?, tags = ?, depends_on = ?, session_id = ?, agent = ?, updated = ? WHERE id = ?",
     )
-    .bind(next.title, next.body, JSON.stringify(next.tags), next.updated, id)
+    .bind(
+      next.title,
+      next.body,
+      JSON.stringify(next.tags),
+      JSON.stringify(next.depends_on),
+      next.session_id,
+      next.agent,
+      next.updated,
+      id,
+    )
     .run();
 
   return next;
@@ -150,29 +223,46 @@ export class SpecRequiredError extends Error {
   }
 }
 
+export interface MoveMeta {
+  depends_on?: number[];
+  session_id?: string | null;
+  agent?: Agent | null;
+}
+
 export async function moveCard(
   db: D1Database,
   id: string,
   target: Status,
+  meta: MoveMeta = {},
 ): Promise<Card> {
   if (!isStatus(target)) throw new Error(`Invalid status: ${target}`);
   const current = await getCard(db, id);
   if (!current) throw new NotFoundError(id);
-  if (current.status === target) return current;
-  if (!canTransition(current.status, target)) {
+  const hasMeta = meta.depends_on !== undefined || meta.session_id !== undefined || meta.agent !== undefined;
+  if (current.status === target && !hasMeta) return current;
+  if (current.status !== target && !canTransition(current.status, target)) {
     throw new TransitionError(current.status, target);
   }
   if (target === "ready" && !current.body.trim()) {
     throw new SpecRequiredError();
   }
 
+  const depends_on = meta.depends_on !== undefined ? normalizeDependsOn(meta.depends_on) : current.depends_on;
+  const session_id = meta.session_id !== undefined ? meta.session_id : current.session_id;
+  let agent: Agent | null = current.agent;
+  if (meta.agent !== undefined) {
+    agent = meta.agent === null ? null : isAgent(meta.agent) ? meta.agent : current.agent;
+  }
+
   const updated = new Date().toISOString();
   await db
-    .prepare("UPDATE cards SET status = ?, updated = ? WHERE id = ?")
-    .bind(target, updated, id)
+    .prepare(
+      "UPDATE cards SET status = ?, depends_on = ?, session_id = ?, agent = ?, updated = ? WHERE id = ?",
+    )
+    .bind(target, JSON.stringify(depends_on), session_id, agent, updated, id)
     .run();
 
-  return { ...current, status: target, updated };
+  return { ...current, status: target, depends_on, session_id, agent, updated };
 }
 
 export async function deleteCard(db: D1Database, id: string): Promise<void> {

@@ -18,3 +18,10 @@ export function canTransition(from: Status, to: Status): boolean {
   if (from === to) return true;
   return TRANSITIONS[from].includes(to);
 }
+
+export const AGENTS = ["cc", "codex"] as const;
+export type Agent = (typeof AGENTS)[number];
+
+export function isAgent(v: unknown): v is Agent {
+  return typeof v === "string" && (AGENTS as readonly string[]).includes(v);
+}
