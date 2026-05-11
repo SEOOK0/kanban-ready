@@ -12,14 +12,18 @@ import {
   updateCard,
 } from "./api.ts";
 
-const COLUMNS: { status: Status; label: string }[] = [
-  { status: "draft", label: "Draft" },
-  { status: "agent_working", label: "Agent Working" },
-  { status: "ready", label: "Ready" },
-  { status: "done", label: "Done" },
-  { status: "deploy", label: "Deploy" },
-  { status: "discarded", label: "Discarded" },
+const COLUMNS: { status: Status; label: string; filterLabel: string; weight: number }[] = [
+  { status: "draft", label: "Draft", filterLabel: "Draft", weight: 1 },
+  { status: "agent_working", label: "Agent", filterLabel: "Agent", weight: 1.1 },
+  { status: "ready", label: "Ready", filterLabel: "Ready", weight: 1.1 },
+  { status: "done", label: "Done", filterLabel: "Done", weight: 0.9 },
+  { status: "deploy", label: "Deploy", filterLabel: "Deploy", weight: 0.85 },
+  { status: "discarded", label: "Discarded", filterLabel: "Discarded", weight: 0.7 },
 ];
+
+const STATUS_FILTER_KEY = "kanban-ready:hidden-statuses";
+const DEFAULT_HIDDEN_STATUSES: Status[] = ["deploy"];
+const STATUS_SET = new Set<Status>(COLUMNS.map((c) => c.status));
 
 function emptyGroups(): Record<Status, Card[]> {
   return { draft: [], agent_working: [], ready: [], done: [], deploy: [], discarded: [] };
@@ -34,12 +38,31 @@ function firstLine(body: string, max = 80): string {
   return line.length > max ? line.slice(0, max - 1) + "…" : line;
 }
 
+function readHiddenStatuses(): Set<Status> {
+  if (typeof window === "undefined") return new Set(DEFAULT_HIDDEN_STATUSES);
+  const raw = window.localStorage.getItem(STATUS_FILTER_KEY);
+  if (!raw) return new Set(DEFAULT_HIDDEN_STATUSES);
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set(DEFAULT_HIDDEN_STATUSES);
+    return new Set(parsed.filter((s): s is Status => STATUS_SET.has(s as Status)));
+  } catch {
+    return new Set(DEFAULT_HIDDEN_STATUSES);
+  }
+}
+
+function buildGridColumns(columns: typeof COLUMNS): string {
+  return columns.map((c) => `${c.weight}fr`).join(" ");
+}
+
 export function App() {
   const [cards, setCards] = useState<Card[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCard, setActiveCard] = useState<Card | null>(null);
   const [showRules, setShowRules] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [hiddenStatuses, setHiddenStatuses] = useState(readHiddenStatuses);
+  const [openMobileStatus, setOpenMobileStatus] = useState<Status>("ready");
   const toastTimer = useRef<number | null>(null);
 
   const flashToast = useCallback((msg: string) => {
@@ -65,11 +88,40 @@ export function App() {
     })();
   }, [refresh, flashToast]);
 
+  useEffect(() => {
+    window.localStorage.setItem(STATUS_FILTER_KEY, JSON.stringify([...hiddenStatuses]));
+  }, [hiddenStatuses]);
+
   const grouped = useMemo(() => {
     const g = emptyGroups();
     for (const c of cards) g[c.status].push(c);
     return g;
   }, [cards]);
+
+  const visibleColumns = useMemo(
+    () => COLUMNS.filter((c) => !hiddenStatuses.has(c.status)),
+    [hiddenStatuses],
+  );
+
+  useEffect(() => {
+    if (!hiddenStatuses.has(openMobileStatus)) return;
+    const next = visibleColumns.find((c) => c.status === "ready") ?? visibleColumns[0];
+    if (next) setOpenMobileStatus(next.status);
+  }, [hiddenStatuses, openMobileStatus, visibleColumns]);
+
+  const toggleStatusFilter = useCallback((status: Status) => {
+    setHiddenStatuses((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) {
+        next.delete(status);
+        return next;
+      }
+      const visibleCount = COLUMNS.length - next.size;
+      if (visibleCount <= 1) return prev;
+      next.add(status);
+      return next;
+    });
+  }, []);
 
   const onDragEnd = useCallback(
     async (result: DropResult) => {
@@ -119,7 +171,7 @@ export function App() {
       try {
         await updateCard(id, patch);
         await refresh();
-        flashToast("saved");
+        flashToast("저장됨");
         return true;
       } catch (err) {
         flashToast(`save failed: ${(err as Error).message}`);
@@ -148,7 +200,7 @@ export function App() {
       try {
         const text = await getPrompt(id);
         await navigator.clipboard.writeText(text);
-        flashToast("프롬프트 복사 완료 — Claude/Codex에 붙여넣기");
+        flashToast("프롬프트 복사 완료");
       } catch (err) {
         flashToast(`copy failed: ${(err as Error).message}`);
       }
@@ -161,6 +213,10 @@ export function App() {
       <div className="topbar">
         <div className="brand">kanban-ready</div>
         <div className="topbar-right">
+          <StatusFilter hiddenStatuses={hiddenStatuses} onToggle={toggleStatusFilter} />
+          <span className="topbar-count">
+            {visibleColumns.length}/{COLUMNS.length}
+          </span>
           <button
             type="button"
             className="rules-button"
@@ -174,14 +230,16 @@ export function App() {
       </div>
 
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="board">
-          {COLUMNS.map(({ status, label }) => (
+        <div className="board" style={{ gridTemplateColumns: buildGridColumns(visibleColumns) }}>
+          {visibleColumns.map(({ status, label }) => (
             <Column
               key={status}
               status={status}
               label={label}
               cards={grouped[status]}
               loading={loading}
+              mobileOpen={openMobileStatus === status}
+              onMobileToggle={() => setOpenMobileStatus(status)}
               onQuickAdd={(t, b) => handleQuickAdd(status, t, b)}
               onCardClick={(c) => setActiveCard(c)}
               onCopyPrompt={handleCopyPrompt}
@@ -211,25 +269,86 @@ export function App() {
   );
 }
 
+interface StatusFilterProps {
+  hiddenStatuses: Set<Status>;
+  onToggle: (status: Status) => void;
+}
+
+function StatusFilter({ hiddenStatuses, onToggle }: StatusFilterProps) {
+  return (
+    <div className="status-filter" role="group" aria-label="status filter">
+      {COLUMNS.map(({ status, filterLabel }) => {
+        const off = hiddenStatuses.has(status);
+        return (
+          <button
+            key={status}
+            type="button"
+            className={`status-filter-chip ${status} ${off ? "is-off" : "is-on"}`}
+            aria-pressed={!off}
+            onClick={() => onToggle(status)}
+            title={off ? `${filterLabel} 보이기` : `${filterLabel} 숨기기`}
+          >
+            <span className={`status-dot ${status}`} aria-hidden="true" />
+            <span className="status-filter-label">{filterLabel}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 interface ColumnProps {
   status: Status;
   label: string;
   cards: Card[];
   loading: boolean;
+  mobileOpen: boolean;
+  onMobileToggle: () => void;
   onQuickAdd: (title: string, body?: string) => void;
   onCardClick: (card: Card) => void;
   onCopyPrompt: (id: string) => void;
 }
 
-function Column({ status, label, cards, loading, onQuickAdd, onCardClick, onCopyPrompt }: ColumnProps) {
+function Column({
+  status,
+  label,
+  cards,
+  loading,
+  mobileOpen,
+  onMobileToggle,
+  onQuickAdd,
+  onCardClick,
+  onCopyPrompt,
+}: ColumnProps) {
   const [adding, setAdding] = useState("");
-  const compact = status === "done" || status === "deploy" || status === "discarded";
+  const compact = status === "done" || status === "deploy";
+  const tight = status === "discarded";
 
   return (
-    <div className={`column ${status}`}>
-      <div className={`column-header ${status}`}>
-        <span className="label">{label}</span>
-        <span className="count">{loading ? "…" : cards.length}</span>
+    <div className={`column ${status} ${mobileOpen ? "mobile-open" : "mobile-closed"}`}>
+      <div
+        className={`column-header ${status}`}
+        role="button"
+        tabIndex={0}
+        aria-expanded={mobileOpen}
+        onClick={onMobileToggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onMobileToggle();
+          }
+        }}
+      >
+        <span className="label">
+          <span className={`status-dot ${status}`} aria-hidden="true" />
+          {label}
+        </span>
+        <span className="column-header-right">
+          <span className="count">{loading ? "…" : cards.length}</span>
+          <span className="mobile-chev" aria-hidden="true">
+            {mobileOpen ? "▾" : "▸"}
+          </span>
+        </span>
       </div>
       {status === "draft" ? (
         <div className="quick-add">
@@ -276,18 +395,32 @@ function Column({ status, label, cards, loading, onQuickAdd, onCardClick, onCopy
                     ref={prov.innerRef}
                     {...prov.draggableProps}
                     {...prov.dragHandleProps}
-                    className={`card ${compact ? "compact" : ""} ${snap.isDragging ? "dragging" : ""}`}
+                    className={`card ${status} ${compact ? "compact" : ""} ${tight ? "tight" : ""} ${
+                      snap.isDragging ? "dragging" : ""
+                    }`}
                     onClick={() => onCardClick(card)}
                   >
-                    <div className="title">
+                    <div className="title-row">
                       <span className="card-number">#{card.number}</span>
-                      {card.title}
+                      <span className="title">{card.title}</span>
                     </div>
-                    {!compact ? (
+                    {!compact && !tight ? (
                       <div className="preview">{firstLine(card.body)}</div>
-                    ) : (
-                      <div className="preview">{firstLine(card.body, 60)}</div>
-                    )}
+                    ) : null}
+                    {!compact && !tight && card.tags.length > 0 ? (
+                      <div className="card-meta">
+                        {card.tags.map((tag) => (
+                          <span key={tag} className="tag-pill">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {status === "agent_working" && !tight ? (
+                      <div className="agent-progress" aria-hidden="true">
+                        <span />
+                      </div>
+                    ) : null}
                     {status === "ready" ? (
                       <button
                         type="button"
