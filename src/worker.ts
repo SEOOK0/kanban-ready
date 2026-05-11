@@ -1,18 +1,25 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { Hono } from "hono";
-import { isStatus, type Status } from "./core/paths.js";
+import { type Status, isStatus } from "./core/paths.js";
 import {
   createCard,
   deleteCard,
   getCard,
   listCards,
   moveCard,
+  type MoveMeta,
   NotFoundError,
   SpecRequiredError,
   TransitionError,
   updateCard,
 } from "./core/store.js";
 import { buildPrompt } from "./core/prompt.js";
+import {
+  InputValidationError,
+  normalizeAgentInput,
+  normalizeDependsOnInput,
+  normalizeSessionIdInput,
+} from "./core/meta.js";
 
 type Bindings = {
   DB: D1Database;
@@ -61,18 +68,29 @@ app.post("/api/cards", async (c) => {
     body?: string;
     tags?: string[];
     status?: string;
+    depends_on?: unknown;
+    session_id?: unknown;
+    agent?: unknown;
   };
   if (!body.title || !body.title.trim()) {
     return c.json({ error: "title required" }, 400);
   }
-  const status: Status = body.status && isStatus(body.status) ? body.status : "draft";
-  const card = await createCard(c.env.DB, {
-    title: body.title.trim(),
-    body: body.body || "",
-    tags: body.tags || [],
-    status,
-  });
-  return c.json({ card }, 201);
+  try {
+    const status: Status = body.status && isStatus(body.status) ? body.status : "draft";
+    const card = await createCard(c.env.DB, {
+      title: body.title.trim(),
+      body: body.body || "",
+      tags: body.tags || [],
+      status,
+      depends_on: normalizeDependsOnInput(body.depends_on),
+      session_id: normalizeSessionIdInput(body.session_id),
+      agent: normalizeAgentInput(body.agent),
+    });
+    return c.json({ card }, 201);
+  } catch (err) {
+    if (err instanceof InputValidationError) return c.json({ error: err.message }, 400);
+    throw err;
+  }
 });
 
 app.patch("/api/cards/:id", async (c) => {
@@ -81,11 +99,22 @@ app.patch("/api/cards/:id", async (c) => {
     title?: string;
     body?: string;
     tags?: string[];
+    depends_on?: unknown;
+    session_id?: unknown;
+    agent?: unknown;
   };
   try {
-    const card = await updateCard(c.env.DB, id, body);
+    const card = await updateCard(c.env.DB, id, {
+      title: body.title,
+      body: body.body,
+      tags: body.tags,
+      depends_on: normalizeDependsOnInput(body.depends_on),
+      session_id: normalizeSessionIdInput(body.session_id),
+      agent: normalizeAgentInput(body.agent),
+    });
     return c.json({ card });
   } catch (err) {
+    if (err instanceof InputValidationError) return c.json({ error: err.message }, 400);
     if (err instanceof NotFoundError) return c.json({ error: err.message }, 404);
     throw err;
   }
@@ -93,14 +122,25 @@ app.patch("/api/cards/:id", async (c) => {
 
 app.post("/api/cards/:id/move", async (c) => {
   const id = c.req.param("id");
-  const body = (await c.req.json().catch(() => ({}))) as { status?: string };
+  const body = (await c.req.json().catch(() => ({}))) as {
+    status?: string;
+    depends_on?: unknown;
+    session_id?: unknown;
+    agent?: unknown;
+  };
   if (!body.status || !isStatus(body.status)) {
     return c.json({ error: "invalid status" }, 400);
   }
+  const meta: MoveMeta = {
+    depends_on: normalizeDependsOnInput(body.depends_on),
+    session_id: normalizeSessionIdInput(body.session_id),
+    agent: normalizeAgentInput(body.agent),
+  };
   try {
-    const card = await moveCard(c.env.DB, id, body.status);
+    const card = await moveCard(c.env.DB, id, body.status, meta);
     return c.json({ card });
   } catch (err) {
+    if (err instanceof InputValidationError) return c.json({ error: err.message }, 400);
     if (err instanceof TransitionError || err instanceof SpecRequiredError) {
       return c.json({ error: err.message }, 400);
     }

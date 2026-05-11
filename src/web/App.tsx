@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
 import {
+  AGENTS,
+  type Agent,
   type Card,
   type Status,
   canTransition,
@@ -11,6 +13,14 @@ import {
   moveCard,
   updateCard,
 } from "./api.ts";
+
+const DRAFT_BODY_TEMPLATE =
+  "## 목표\n\n## 컨텍스트\n\n## 작업 단계\n\n## 검증 기준\n";
+
+function shortSession(id: string | null): string {
+  if (!id) return "";
+  return id.length <= 8 ? id : `${id.slice(0, 4)}…${id.slice(-4)}`;
+}
 
 const COLUMNS: { status: Status; label: string; filterLabel: string; weight: number }[] = [
   { status: "draft", label: "Draft", filterLabel: "Draft", weight: 1 },
@@ -152,10 +162,11 @@ export function App() {
   const handleQuickAdd = useCallback(
     async (status: Status, title: string, body?: string) => {
       if (!title.trim()) return;
+      const finalBody = body && body.trim() ? body : DRAFT_BODY_TEMPLATE;
       try {
         await createCard({
           title: title.trim(),
-          body: body && body.trim() ? body : undefined,
+          body: finalBody,
           status,
         });
         await refresh();
@@ -167,7 +178,16 @@ export function App() {
   );
 
   const handleSave = useCallback(
-    async (id: string, patch: { title?: string; body?: string }) => {
+    async (
+      id: string,
+      patch: {
+        title?: string;
+        body?: string;
+        depends_on?: number[];
+        session_id?: string | null;
+        agent?: Agent | null;
+      },
+    ) => {
       try {
         await updateCard(id, patch);
         await refresh();
@@ -407,15 +427,7 @@ function Column({
                     {!compact && !tight ? (
                       <div className="preview">{firstLine(card.body)}</div>
                     ) : null}
-                    {!compact && !tight && card.tags.length > 0 ? (
-                      <div className="card-meta">
-                        {card.tags.map((tag) => (
-                          <span key={tag} className="tag-pill">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
+                    {!compact && !tight ? <CardMetaRow card={card} /> : null}
                     {status === "agent_working" && !tight ? (
                       <div className="agent-progress" aria-hidden="true">
                         <span />
@@ -463,32 +475,75 @@ function Column({
 interface CardModalProps {
   card: Card;
   onClose: () => void;
-  onSave: (patch: { title?: string; body?: string }) => Promise<void>;
+  onSave: (patch: {
+    title?: string;
+    body?: string;
+    depends_on?: number[];
+    session_id?: string | null;
+    agent?: Agent | null;
+  }) => Promise<void>;
   onDelete: () => void;
   onCopyPrompt: () => void;
+}
+
+function dependsOnToString(deps: number[]): string {
+  return deps.map((n) => `#${n}`).join(", ");
+}
+
+function parseDependsOnInput(raw: string): number[] {
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (const tok of raw.split(/[\s,]+/)) {
+    if (!tok) continue;
+    const n = Number(tok.replace(/^#/, ""));
+    if (!Number.isInteger(n) || n <= 0) continue;
+    if (seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+  }
+  return out;
 }
 
 function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt }: CardModalProps) {
   const [title, setTitle] = useState(card.title);
   const [body, setBody] = useState(card.body);
-  const dirty = title !== card.title || body !== card.body;
+  const [dependsOnText, setDependsOnText] = useState(dependsOnToString(card.depends_on));
+  const [sessionIdText, setSessionIdText] = useState(card.session_id ?? "");
+  const [agentValue, setAgentValue] = useState<Agent | "">(card.agent ?? "");
+
+  const parsedDeps = useMemo(() => parseDependsOnInput(dependsOnText), [dependsOnText]);
+  const depsDirty = JSON.stringify(parsedDeps) !== JSON.stringify(card.depends_on);
+  const sessionDirty = (sessionIdText.trim() || null) !== card.session_id;
+  const agentDirty = (agentValue || null) !== card.agent;
+  const dirty = title !== card.title || body !== card.body || depsDirty || sessionDirty || agentDirty;
 
   useEffect(() => {
     setTitle(card.title);
     setBody(card.body);
-  }, [card.id, card.title, card.body]);
+    setDependsOnText(dependsOnToString(card.depends_on));
+    setSessionIdText(card.session_id ?? "");
+    setAgentValue(card.agent ?? "");
+  }, [card.id, card.title, card.body, card.depends_on, card.session_id, card.agent]);
+
+  const buildPatch = useCallback(() => ({
+    title,
+    body,
+    depends_on: parsedDeps,
+    session_id: sessionIdText.trim() || null,
+    agent: (agentValue || null) as Agent | null,
+  }), [title, body, parsedDeps, sessionIdText, agentValue]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
-        if (dirty) onSave({ title, body });
+        if (dirty) onSave(buildPatch());
       }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [dirty, title, body, onSave, onClose]);
+  }, [dirty, buildPatch, onSave, onClose]);
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -505,6 +560,38 @@ function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt }: CardModalP
         <div className="modal-body">
           <textarea value={body} onChange={(e) => setBody(e.target.value)} />
         </div>
+        <div className="modal-meta">
+          <label className="meta-field">
+            <span className="meta-label">Agent</span>
+            <select
+              value={agentValue}
+              onChange={(e) => setAgentValue(e.target.value as Agent | "")}
+            >
+              <option value="">—</option>
+              {AGENTS.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+          </label>
+          <label className="meta-field">
+            <span className="meta-label">Session</span>
+            <input
+              className="meta-input mono"
+              placeholder="agent session id"
+              value={sessionIdText}
+              onChange={(e) => setSessionIdText(e.target.value)}
+            />
+          </label>
+          <label className="meta-field">
+            <span className="meta-label">Depends</span>
+            <input
+              className="meta-input mono"
+              placeholder="#3, #7"
+              value={dependsOnText}
+              onChange={(e) => setDependsOnText(e.target.value)}
+            />
+          </label>
+        </div>
         <div className="modal-footer">
           <div className="left">
             <button className="danger" onClick={onDelete}>
@@ -514,7 +601,7 @@ function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt }: CardModalP
           <div className="right">
             <span className="id">{card.id}</span>
             <button onClick={onClose}>Close</button>
-            <button disabled={!dirty} onClick={() => onSave({ title, body })}>
+            <button disabled={!dirty} onClick={() => onSave(buildPatch())}>
               Save
             </button>
             <button className="primary" onClick={onCopyPrompt}>
@@ -523,6 +610,30 @@ function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt }: CardModalP
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function CardMetaRow({ card }: { card: Card }) {
+  const hasMeta = card.agent || card.session_id || card.depends_on.length > 0;
+  const hasTags = card.tags.length > 0;
+  if (!hasMeta && !hasTags) return null;
+  return (
+    <div className="card-meta">
+      {card.agent ? <span className={`agent-badge ${card.agent}`}>{card.agent}</span> : null}
+      {card.depends_on.length > 0 ? (
+        <span className="deps-pill mono" title="depends on">
+          {card.depends_on.map((n) => `#${n}`).join(" ")}
+        </span>
+      ) : null}
+      {card.session_id ? (
+        <span className="session-pill mono" title={card.session_id}>
+          {shortSession(card.session_id)}
+        </span>
+      ) : null}
+      {card.tags.map((tag) => (
+        <span key={tag} className="tag-pill">{tag}</span>
+      ))}
     </div>
   );
 }

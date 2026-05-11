@@ -44,8 +44,15 @@ discarded는 모든 상태에서 들어갈 수 있고, 다시 원하는 활성 �
 - 사용자가 카드를 지목하면 `get_card(id)`로 본문을 읽는다.
 - 본문이 비어있으면 사용자와 대화하여 무엇을 만들 것인지 구체화한다. agent가 추측으로 본문을 채우지 않는다.
 
-**Step 2. 작업 시작 신호 → agent_working으로 이동**
-- 사용자가 "이 카드 작업해줘" 식으로 요청하면 **먼저 `start_agent_work(id)`를 호출**한다. 보드에서 카드가 Agent Working 컬럼으로 이동해 사용자에게 진행중임이 즉시 보인다.
+**Step 2. 작업 시작 신호 → agent_working으로 이동 (메타 자가 보고)**
+- 사용자가 "이 카드 작업해줘" 식으로 요청하면 **먼저 `start_agent_work`를 호출**한다. 보드에서 카드가 Agent Working 컬럼으로 이동해 사용자에게 진행중임이 즉시 보인다.
+- 인자는 반드시 본인 정체를 함께 넘긴다:
+  - `id` — 카드 id
+  - `agent` — 본인이 누구인지. Claude Code면 `"cc"`, Codex CLI면 `"codex"`.
+  - `session_id` — 본인의 현재 세션 id. Claude Code는 활성 세션 UUID (`.claude/projects/.../<uuid>.jsonl`의 파일명), Codex CLI는 rollout 파일의 UUID 부분.
+  - `depends_on` — (선택) 이 카드가 의존하는 다른 카드 번호 배열 (`[3, 7]`). 모르면 생략.
+- 호출 예: `start_agent_work({ id: "2026-05-11-...", agent: "cc", session_id: "6b1644b1-f461-49db-b47e-2d0b0bcfd5c0" })`.
+- 이 호출 한 번으로 카드에 `agent` / `session_id` / `depends_on` 이 atomic하게 기록되고 status는 `agent_working`이 된다. 사용자가 모달을 열면 누가 작업중인지가 메타에 보인다.
 - 이 단계에서 body가 비어있어도 OK. spec 작성은 다음 step에서.
 
 **Step 3. spec / task 작성**

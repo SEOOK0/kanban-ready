@@ -1,4 +1,6 @@
 export type Status = "draft" | "agent_working" | "ready" | "done" | "deploy" | "discarded";
+export type Agent = "cc" | "codex";
+export const AGENTS: readonly Agent[] = ["cc", "codex"];
 
 export const TRANSITIONS: Record<Status, readonly Status[]> = {
   draft: ["agent_working", "ready", "discarded"],
@@ -23,6 +25,15 @@ export interface Card {
   created: string;
   updated: string;
   tags: string[];
+  depends_on: number[];
+  session_id: string | null;
+  agent: Agent | null;
+}
+
+export interface CardMetaPatch {
+  depends_on?: number[];
+  session_id?: string | null;
+  agent?: Agent | null;
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -50,7 +61,10 @@ export async function createCard(input: { title: string; body?: string; status?:
   return data.card;
 }
 
-export async function updateCard(id: string, patch: { title?: string; body?: string; tags?: string[] }): Promise<Card> {
+export async function updateCard(
+  id: string,
+  patch: { title?: string; body?: string; tags?: string[] } & CardMetaPatch,
+): Promise<Card> {
   const data = await req<{ card: Card }>(`/api/cards/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
