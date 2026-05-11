@@ -119,8 +119,10 @@ export function App() {
         await updateCard(id, patch);
         await refresh();
         flashToast("saved");
+        return true;
       } catch (err) {
         flashToast(`save failed: ${(err as Error).message}`);
+        return false;
       }
     },
     [refresh, flashToast],
@@ -192,8 +194,9 @@ export function App() {
           card={activeCard}
           onClose={() => setActiveCard(null)}
           onSave={async (patch) => {
-            await handleSave(activeCard.id, patch);
-            setActiveCard((cur) => (cur ? { ...cur, ...patch } : cur));
+            const ok = await handleSave(activeCard.id, patch);
+            if (ok) setActiveCard(null);
+            else setActiveCard((cur) => (cur ? { ...cur, ...patch } : cur));
           }}
           onDelete={() => handleDelete(activeCard.id)}
           onCopyPrompt={() => handleCopyPrompt(activeCard.id)}
