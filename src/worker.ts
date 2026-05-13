@@ -131,12 +131,12 @@ app.post("/api/cards/:id/move", async (c) => {
   if (!body.status || !isStatus(body.status)) {
     return c.json({ error: "invalid status" }, 400);
   }
-  const meta: MoveMeta = {
-    depends_on: normalizeDependsOnInput(body.depends_on),
-    session_id: normalizeSessionIdInput(body.session_id),
-    agent: normalizeAgentInput(body.agent),
-  };
   try {
+    const meta: MoveMeta = {
+      depends_on: normalizeDependsOnInput(body.depends_on),
+      session_id: normalizeSessionIdInput(body.session_id),
+      agent: normalizeAgentInput(body.agent),
+    };
     const card = await moveCard(c.env.DB, id, body.status, meta);
     return c.json({ card });
   } catch (err) {
