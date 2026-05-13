@@ -15,7 +15,7 @@ export interface Card {
 }
 
 export const DRAFT_BODY_TEMPLATE =
-  "## 목표\n\n## 컨텍스트\n\n## 작업 단계\n\n## 검증 기준\n";
+  "## 목표\n\n## 컨텍스트\n\n## 작업 단계\n- [ ] …\n\n## 검증 기준\n- [ ] …\n";
 
 export function slugify(title: string): string {
   const base = title
