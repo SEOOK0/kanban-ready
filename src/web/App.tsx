@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   AGENTS,
   type Agent,
@@ -15,7 +17,7 @@ import {
 } from "./api.ts";
 
 const DRAFT_BODY_TEMPLATE =
-  "## 목표\n\n## 컨텍스트\n\n## 작업 단계\n\n## 검증 기준\n";
+  "## 목표\n\n## 컨텍스트\n\n## 작업 단계\n- [ ] …\n\n## 검증 기준\n- [ ] …\n";
 
 function shortSession(id: string | null): string {
   if (!id) return "";
@@ -510,6 +512,8 @@ function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt }: CardModalP
   const [dependsOnText, setDependsOnText] = useState(dependsOnToString(card.depends_on));
   const [sessionIdText, setSessionIdText] = useState(card.session_id ?? "");
   const [agentValue, setAgentValue] = useState<Agent | "">(card.agent ?? "");
+  const [editing, setEditing] = useState(false);
+  const bodyEditRef = useRef<HTMLTextAreaElement | null>(null);
 
   const parsedDeps = useMemo(() => parseDependsOnInput(dependsOnText), [dependsOnText]);
   const depsDirty = JSON.stringify(parsedDeps) !== JSON.stringify(card.depends_on);
@@ -523,7 +527,12 @@ function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt }: CardModalP
     setDependsOnText(dependsOnToString(card.depends_on));
     setSessionIdText(card.session_id ?? "");
     setAgentValue(card.agent ?? "");
+    setEditing(false);
   }, [card.id, card.title, card.body, card.depends_on, card.session_id, card.agent]);
+
+  useEffect(() => {
+    if (editing) bodyEditRef.current?.focus();
+  }, [editing]);
 
   const buildPatch = useCallback(() => ({
     title,
@@ -533,17 +542,36 @@ function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt }: CardModalP
     agent: (agentValue || null) as Agent | null,
   }), [title, body, parsedDeps, sessionIdText, agentValue]);
 
+  const handleSave = useCallback(async () => {
+    await onSave(buildPatch());
+    setEditing(false);
+  }, [onSave, buildPatch]);
+
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        if (editing) setEditing(false);
+        else onClose();
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
-        if (dirty) onSave(buildPatch());
+        if (dirty) handleSave();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "e") {
+        e.preventDefault();
+        setEditing((v) => !v);
       }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [dirty, buildPatch, onSave, onClose]);
+  }, [dirty, handleSave, onClose, editing]);
+
+  const handlePreviewClick = useCallback((e: MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest("a")) return;
+    if (window.getSelection()?.toString().length) return;
+    setEditing(true);
+  }, []);
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -558,7 +586,25 @@ function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt }: CardModalP
           <span className={`status-badge ${card.status}`}>{card.status}</span>
         </div>
         <div className="modal-body">
-          <textarea value={body} onChange={(e) => setBody(e.target.value)} />
+          {editing ? (
+            <textarea
+              ref={bodyEditRef}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+            />
+          ) : (
+            <div
+              className={`markdown-body ${body.trim() ? "" : "markdown-body--empty"}`}
+              onClick={handlePreviewClick}
+              title="Click to edit (⌘/Ctrl+E)"
+            >
+              {body.trim() ? (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
+              ) : (
+                <span className="markdown-body__hint">empty — click to add</span>
+              )}
+            </div>
+          )}
         </div>
         <div className="modal-meta">
           <label className="meta-field">
@@ -601,7 +647,7 @@ function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt }: CardModalP
           <div className="right">
             <span className="id">{card.id}</span>
             <button onClick={onClose}>Close</button>
-            <button disabled={!dirty} onClick={() => onSave(buildPatch())}>
+            <button disabled={!dirty} onClick={handleSave}>
               Save
             </button>
             <button className="primary" onClick={onCopyPrompt}>
