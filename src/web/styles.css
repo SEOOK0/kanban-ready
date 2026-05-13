@@ -715,6 +715,26 @@ textarea:focus,
   flex: 1;
   flex-direction: column;
   padding: 14px;
+  position: relative;
+}
+
+.modal-body-toggle {
+  position: absolute;
+  top: 8px;
+  right: 22px;
+  z-index: 1;
+  padding: 2px 8px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--border-dim);
+  border-radius: 4px;
+}
+
+.modal-body-toggle:hover {
+  color: var(--text);
+  border-color: var(--border);
 }
 
 .modal-body textarea {

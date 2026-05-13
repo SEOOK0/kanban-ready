@@ -586,6 +586,14 @@ function CardModal({ card, onClose, onSave, onDelete, onCopyPrompt }: CardModalP
           <span className={`status-badge ${card.status}`}>{card.status}</span>
         </div>
         <div className="modal-body">
+          <button
+            type="button"
+            className="modal-body-toggle"
+            onClick={() => setEditing((v) => !v)}
+            title={editing ? "Preview (Esc)" : "Edit (⌘/Ctrl+E or click body)"}
+          >
+            {editing ? "Preview" : "Edit"}
+          </button>
           {editing ? (
             <textarea
               ref={bodyEditRef}
