@@ -25,20 +25,69 @@ type Bindings = {
   DB: D1Database;
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   ALLOWED_IPS?: string;
+  SHARED_TOKEN?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-app.use("*", async (c, next) => {
-  const raw = c.env.ALLOWED_IPS;
-  if (!raw) return next();
-  const allowed = raw.split(",").map((s) => s.trim()).filter(Boolean);
-  if (allowed.length === 0) return next();
-  const ip = c.req.header("cf-connecting-ip") || "";
-  if (!allowed.includes(ip)) {
-    return c.text("Forbidden", 403);
+const TOKEN_COOKIE = "kanban_token";
+const TOKEN_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+
+function parseAllowedIps(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+function readCookie(header: string | undefined, name: string): string | null {
+  if (!header) return null;
+  for (const part of header.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    if (part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
   }
-  return next();
+  return null;
+}
+
+function buildTokenCookie(token: string): string {
+  return `${TOKEN_COOKIE}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${TOKEN_COOKIE_MAX_AGE}`;
+}
+
+app.use("*", async (c, next) => {
+  const allowed = parseAllowedIps(c.env.ALLOWED_IPS);
+  const sharedToken = (c.env.SHARED_TOKEN || "").trim();
+
+  // Both gates off → fail-open (matches original behavior)
+  if (allowed.length === 0 && !sharedToken) return next();
+
+  // Setup flow: ?token=X always sets cookie + redirects, regardless of IP.
+  // Lets a user (laptop or phone) bookmark the clean URL once and rely on
+  // the cookie thereafter.
+  if (sharedToken) {
+    const qToken = c.req.query("token");
+    if (qToken && qToken === sharedToken) {
+      const cookie = buildTokenCookie(sharedToken);
+      if (c.req.method === "GET") {
+        const url = new URL(c.req.url);
+        url.searchParams.delete("token");
+        c.header("Set-Cookie", cookie);
+        return c.redirect(url.toString(), 302);
+      }
+      c.header("Set-Cookie", cookie);
+      return next();
+    }
+  }
+
+  // IP gate
+  const ip = c.req.header("cf-connecting-ip") || "";
+  if (allowed.length > 0 && allowed.includes(ip)) return next();
+
+  // Cookie gate
+  if (sharedToken) {
+    const cookieToken = readCookie(c.req.header("cookie"), TOKEN_COOKIE);
+    if (cookieToken && cookieToken === sharedToken) return next();
+  }
+
+  return c.text("Forbidden", 403);
 });
 
 app.get("/api/health", (c) => c.json({ ok: true }));
