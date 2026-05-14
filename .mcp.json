@@ -3,7 +3,7 @@
     "kanban-ready": {
       "command": "npx",
       "args": ["tsx", "mcp/server.ts"],
-      "env": { "KANBAN_API_URL": "https://kanban.your-domain.com" }
+      "env": { "KANBAN_API_URL": "https://kanban-ready.jws71010452.workers.dev" }
     },
     "kanban-ready-local": {
       "command": "npx",

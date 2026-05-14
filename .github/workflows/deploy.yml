@@ -12,7 +12,7 @@ jobs:
   deploy:
     # Skip on forks. Forks that want auto-deploy should change this to their
     # own `<owner>/<repo>` and register the secrets listed in README.
-    if: github.repository == 'devstefancho/kanban-ready'
+    if: github.repository == 'SEOOK0/kanban-ready'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -33,10 +33,8 @@ jobs:
       - name: Inject deploy config
         env:
           D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
-          PROD_DOMAIN: ${{ secrets.PROD_DOMAIN }}
         run: |
           sed -i "s|<your-d1-database-id>|${D1_DATABASE_ID}|g" wrangler.toml
-          sed -i "s|kanban\.example\.com|${PROD_DOMAIN}|g" wrangler.toml
 
       - run: npm run build
 
