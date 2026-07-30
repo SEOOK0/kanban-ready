@@ -5,6 +5,7 @@ import {
   createCard,
   deleteCard,
   getCard,
+  listCardEvents,
   listCards,
   moveCard,
   type MoveMeta,
@@ -212,6 +213,13 @@ app.get("/api/cards/:id/prompt", async (c) => {
   const card = await getCard(c.env.DB, c.req.param("id"));
   if (!card) return c.json({ error: "not found" }, 404);
   return c.text(buildPrompt(card));
+});
+
+app.get("/api/cards/:id/events", async (c) => {
+  const card = await getCard(c.env.DB, c.req.param("id"));
+  if (!card) return c.json({ error: "not found" }, 404);
+  const events = await listCardEvents(c.env.DB, card.id);
+  return c.json({ events });
 });
 
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
